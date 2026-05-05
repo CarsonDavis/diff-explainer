@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+.env*.local
+*.tsbuildinfo
+.DS_Store
+
+# Local review file — the deployed site bakes examples/<example>.json instead
+public/review.json
+
+# CDK
+cdk/cdk.out/
+cdk/.venv/
+cdk/__pycache__/
+cdk/**/__pycache__/
+cdk/outputs.json

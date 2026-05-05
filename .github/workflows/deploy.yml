@@ -1,0 +1,77 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  # Which example to bake into the deployed site. Path is relative to repo root.
+  EXAMPLE_REVIEW: examples/login-rate-limit.json
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ── App build ─────────────────────────────────────────────
+      - name: Install Node deps
+        run: npm ci
+
+      - name: Bake example review into the build
+        run: |
+          mkdir -p public
+          cp "$EXAMPLE_REVIEW" public/review.json
+
+      - name: Next.js static export
+        run: npm run build
+
+      # ── CDK deploy ────────────────────────────────────────────
+      - name: Install CDK deps
+        working-directory: cdk
+        run: uv venv && uv pip install -r requirements.txt
+
+      - name: CDK deploy
+        working-directory: cdk
+        run: npx cdk deploy --require-approval never --outputs-file outputs.json
+
+      - name: Extract stack outputs
+        id: outputs
+        working-directory: cdk
+        run: |
+          echo "bucket=$(jq -r '.CodeExplainerStack.SiteBucketName' outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "distribution=$(jq -r '.CodeExplainerStack.DistributionId' outputs.json)" >> "$GITHUB_OUTPUT"
+
+      # ── Sync + invalidate ─────────────────────────────────────
+      - name: Sync out/ to S3
+        run: aws s3 sync out/ "s3://${{ steps.outputs.outputs.bucket }}/" --delete
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.outputs.outputs.distribution }}" \
+            --paths "/*"

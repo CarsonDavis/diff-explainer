@@ -1,0 +1,120 @@
+{
+  "metadata": {
+    "repoName": "example/auth-service",
+    "baseBranch": "main",
+    "headBranch": "feature/login-rate-limit",
+    "generatedAt": "2026-05-05T14:30:00Z",
+    "title": "Add per-IP rate limiting to the login endpoint",
+    "summary": "Adds an in-memory token-bucket limiter and applies it to /auth/login. The goal is to slow down credential-stuffing attacks without affecting legitimate users. The limiter is intentionally simple — a single-process in-memory dict — because we only need short-term throttling and we already shed traffic at the load balancer for sustained abuse."
+  },
+  "files": [
+    {
+      "path": "src/rate_limiter.py",
+      "language": "python",
+      "changeType": "added",
+      "overview": {
+        "purpose": "A small, in-memory token-bucket rate limiter. You ask it `allow(key)` and it returns True or False based on how many requests `key` has made recently.",
+        "background": "A token bucket is a standard rate-limiting pattern: each key has a bucket that refills at a fixed rate up to a max capacity. Each request consumes one token; if the bucket is empty, the request is rejected. Compared to fixed-window counters, it gives smoother behavior at the boundary between windows.",
+        "keyPieces": [
+          { "name": "TokenBucket", "description": "Holds the bucket state for a single key (current tokens + last-refill timestamp)." },
+          { "name": "RateLimiter.allow", "description": "Refills the relevant bucket based on elapsed time, then consumes a token if one is available." }
+        ]
+      },
+      "oldContent": "",
+      "newContent": "\"\"\"In-memory token-bucket rate limiter.\n\nIntentionally simple: a dict of buckets keyed by a caller-supplied string\n(typically a client IP). Not safe across processes — see the module docstring\nin `auth.py` for why that's fine for our use case.\n\"\"\"\n\nfrom __future__ import annotations\n\nimport threading\nimport time\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass TokenBucket:\n    tokens: float\n    last_refill: float\n\n\nclass RateLimiter:\n    def __init__(self, capacity: int, refill_per_second: float) -> None:\n        self._capacity = capacity\n        self._refill_per_second = refill_per_second\n        self._buckets: dict[str, TokenBucket] = {}\n        self._lock = threading.Lock()\n\n    def allow(self, key: str) -> bool:\n        now = time.monotonic()\n        with self._lock:\n            bucket = self._buckets.get(key)\n            if bucket is None:\n                bucket = TokenBucket(tokens=self._capacity, last_refill=now)\n                self._buckets[key] = bucket\n\n            elapsed = now - bucket.last_refill\n            bucket.tokens = min(\n                self._capacity,\n                bucket.tokens + elapsed * self._refill_per_second,\n            )\n            bucket.last_refill = now\n\n            if bucket.tokens >= 1.0:\n                bucket.tokens -= 1.0\n                return True\n            return False\n",
+      "explanations": [
+        {
+          "startLine": 14,
+          "endLine": 17,
+          "title": "TokenBucket dataclass",
+          "what": "Defines the per-key state: how many tokens are left and when we last refilled.",
+          "why": "Pulled into a tiny dataclass so the bucket math reads cleanly. `tokens` is a float because partial tokens accumulate between requests as time passes.",
+          "impact": "Each tracked key (client IP) holds two floats. With ~10k unique IPs in a hot window that's well under a megabyte of state."
+        },
+        {
+          "startLine": 20,
+          "endLine": 25,
+          "title": "Constructor + bucket store",
+          "what": "Holds two policy knobs (capacity + refill rate) and a dict of buckets, plus a lock for thread safety.",
+          "why": "Capacity sets how big a burst is allowed; refill rate sets the long-run sustained rate. The lock matters because Flask serves requests on multiple threads — without it, two threads could both decrement `tokens` from the same bucket and let a request through that should have been blocked."
+        },
+        {
+          "startLine": 27,
+          "endLine": 44,
+          "title": "allow(): the core rate-limit check",
+          "what": "Looks up (or creates) the bucket for `key`, refills it based on elapsed time, then consumes one token if at least one is available.",
+          "why": "This is the standard token-bucket algorithm. Computing the refill lazily — only when we're called — avoids a background timer thread and keeps the limiter accurate even after long idle periods.",
+          "impact": "The `min(capacity, ...)` cap is important: without it, an idle bucket would accumulate unbounded tokens and the first burst could be huge. With it, the worst-case burst is exactly `capacity` requests."
+        }
+      ]
+    },
+    {
+      "path": "src/auth.py",
+      "language": "python",
+      "changeType": "modified",
+      "overview": {
+        "purpose": "The HTTP authentication endpoints. Today that's just /auth/login; eventually it'll also host /auth/logout and the password-reset flow.",
+        "background": "We use Flask. `request.remote_addr` gives us the client IP after the load balancer rewrites it (the X-Forwarded-For handling lives in middleware, not here).",
+        "keyPieces": [
+          { "name": "login()", "description": "Validates credentials and returns a session token, or 401 on failure." }
+        ]
+      },
+      "oldContent": "from flask import Blueprint, jsonify, request\n\nfrom src.users import verify_credentials, issue_session_token\n\nauth_bp = Blueprint(\"auth\", __name__)\n\n\n@auth_bp.post(\"/auth/login\")\ndef login():\n    payload = request.get_json(force=True) or {}\n    username = payload.get(\"username\", \"\")\n    password = payload.get(\"password\", \"\")\n\n    user = verify_credentials(username, password)\n    if user is None:\n        return jsonify({\"error\": \"invalid credentials\"}), 401\n\n    token = issue_session_token(user.id)\n    return jsonify({\"token\": token}), 200\n",
+      "newContent": "from flask import Blueprint, jsonify, request\n\nfrom src.rate_limiter import RateLimiter\nfrom src.users import verify_credentials, issue_session_token\n\nauth_bp = Blueprint(\"auth\", __name__)\n\n# 5 attempts per IP, refilling at 1 attempt every 30 seconds.\n# That's a hard cap of 5 in a burst, then ~2/minute sustained.\n_login_limiter = RateLimiter(capacity=5, refill_per_second=1 / 30)\n\n\n@auth_bp.post(\"/auth/login\")\ndef login():\n    client_ip = request.remote_addr or \"unknown\"\n    if not _login_limiter.allow(client_ip):\n        return jsonify({\"error\": \"too many attempts, slow down\"}), 429\n\n    payload = request.get_json(force=True) or {}\n    username = payload.get(\"username\", \"\")\n    password = payload.get(\"password\", \"\")\n\n    user = verify_credentials(username, password)\n    if user is None:\n        return jsonify({\"error\": \"invalid credentials\"}), 401\n\n    token = issue_session_token(user.id)\n    return jsonify({\"token\": token}), 200\n",
+      "explanations": [
+        {
+          "startLine": 3,
+          "endLine": 3,
+          "title": "Import the limiter",
+          "what": "Pulls in the new RateLimiter class.",
+          "why": "Kept as a sibling import because both modules live under `src/`."
+        },
+        {
+          "startLine": 8,
+          "endLine": 10,
+          "title": "Module-level limiter instance",
+          "what": "Creates a single shared limiter for the whole module, configured for 5 attempts per IP with a 30-second refill.",
+          "why": "Module-level so the dict of buckets persists across requests. Recreating it per request would reset all counters and defeat the whole point.",
+          "impact": "Because state lives on the module object, restarting the process resets all limits. That's acceptable: if an attacker can trigger an app restart they have bigger problems, and our deploys are infrequent."
+        },
+        {
+          "startLine": 15,
+          "endLine": 17,
+          "title": "Rate-limit gate at the top of login()",
+          "what": "Resolves the client IP and rejects with HTTP 429 if the bucket is empty.",
+          "why": "Putting this BEFORE credential verification is deliberate. We don't want repeated bad logins to cost a bcrypt hash check — that's expensive enough to be a DoS amplifier on its own.",
+          "impact": "429 is the right status code for rate limits (vs. 401 for bad creds, vs. 403 for forbidden). Our load balancer dashboards already alert on 429 spikes."
+        }
+      ]
+    },
+    {
+      "path": "tests/test_auth.py",
+      "language": "python",
+      "changeType": "modified",
+      "overview": {
+        "purpose": "Integration tests for the auth blueprint. Hits the Flask test client and asserts on responses.",
+        "background": "We use pytest. The `client` fixture is a Flask test client wired up in conftest.py; it shares the same app object across the test run."
+      },
+      "oldContent": "import pytest\n\n\ndef test_login_success(client, valid_user):\n    res = client.post(\"/auth/login\", json={\n        \"username\": valid_user.username,\n        \"password\": valid_user.password,\n    })\n    assert res.status_code == 200\n    assert \"token\" in res.json\n\n\ndef test_login_bad_password(client, valid_user):\n    res = client.post(\"/auth/login\", json={\n        \"username\": valid_user.username,\n        \"password\": \"nope\",\n    })\n    assert res.status_code == 401\n",
+      "newContent": "import pytest\n\nfrom src import auth as auth_module\nfrom src.rate_limiter import RateLimiter\n\n\n@pytest.fixture(autouse=True)\ndef _reset_limiter():\n    # Each test gets a fresh limiter so attempts from previous tests don't carry over.\n    auth_module._login_limiter = RateLimiter(capacity=5, refill_per_second=1 / 30)\n    yield\n\n\ndef test_login_success(client, valid_user):\n    res = client.post(\"/auth/login\", json={\n        \"username\": valid_user.username,\n        \"password\": valid_user.password,\n    })\n    assert res.status_code == 200\n    assert \"token\" in res.json\n\n\ndef test_login_bad_password(client, valid_user):\n    res = client.post(\"/auth/login\", json={\n        \"username\": valid_user.username,\n        \"password\": \"nope\",\n    })\n    assert res.status_code == 401\n\n\ndef test_login_rate_limited_after_burst(client, valid_user):\n    bad = {\"username\": valid_user.username, \"password\": \"nope\"}\n    # Five bad attempts use up the bucket.\n    for _ in range(5):\n        assert client.post(\"/auth/login\", json=bad).status_code == 401\n    # The sixth comes back as 429, not 401.\n    assert client.post(\"/auth/login\", json=bad).status_code == 429\n",
+      "explanations": [
+        {
+          "startLine": 3,
+          "endLine": 11,
+          "title": "Auto-reset fixture for the limiter",
+          "what": "An autouse fixture that replaces the module-level limiter with a fresh one before each test.",
+          "why": "Because the limiter is module-level (see auth.py), state leaks across tests by default. Without this reset, the order tests run in would change which ones get rate-limited.",
+          "impact": "Reaching into `auth_module._login_limiter` is a bit ugly — the underscore signals it's private — but the alternative (dependency injection through Flask config) felt like a lot of plumbing for one test seam."
+        },
+        {
+          "startLine": 30,
+          "endLine": 36,
+          "title": "New test: 6th attempt is rate-limited",
+          "what": "Sends 5 bad logins, asserts each returns 401, then sends a 6th and asserts it returns 429.",
+          "why": "Locks in the contract: capacity is 5 and the limiter sits in front of credential verification. If someone later moves the gate after the verify step (or bumps the capacity without thinking), this test fails.",
+          "impact": "Note that this test depends on the 30-second refill being slow enough that no token comes back during the test. If we ever speed up refill in production, we'll need to inject a fake clock here instead."
+        }
+      ]
+    }
+  ]
+}
