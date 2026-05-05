@@ -145,22 +145,27 @@ class CodeExplainerStack(Stack):
             )
         )
 
-        # CDK deploy permissions — matches code-by-carson's pattern.
-        # Broad on purpose (CDK creates many resource types); reviewer
-        # should know this is the same blast radius as the portfolio role.
+        # CDK deploy permissions — narrowly scoped to assuming the CDK
+        # bootstrap roles. Modern CDK ("new-style synthesis") delegates all
+        # CloudFormation, IAM, and asset-upload work to those roles; the CI
+        # principal only needs to assume them.
+        #
+        # The bootstrap qualifier `hnb659fds` is the default created by
+        # `cdk bootstrap`. If the qualifier is ever changed (`cdk bootstrap
+        # --qualifier <new>`), update these ARNs to match.
+        cdk_qualifier = "hnb659fds"
+        cdk_role_arns = [
+            f"arn:aws:iam::{self.account}:role/cdk-{cdk_qualifier}-{purpose}-{self.account}-{self.region}"
+            for purpose in (
+                "deploy-role",
+                "file-publishing-role",
+                "lookup-role",
+            )
+        ]
         deploy_role.add_to_policy(
             iam.PolicyStatement(
-                actions=[
-                    "cloudformation:*",
-                    "s3:*",
-                    "cloudfront:*",
-                    "route53:*",
-                    "acm:*",
-                    "iam:*",
-                    "ssm:GetParameter",
-                    "sts:AssumeRole",
-                ],
-                resources=["*"],
+                actions=["sts:AssumeRole"],
+                resources=cdk_role_arns,
             )
         )
 
