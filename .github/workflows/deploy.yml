@@ -36,6 +36,11 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Resolve AWS account ID
+        id: account
+        run: |
+          echo "id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"
+
       # ── App build ─────────────────────────────────────────────
       - name: Install Node deps
         run: npm ci
@@ -55,6 +60,16 @@ jobs:
 
       - name: CDK deploy
         working-directory: cdk
+        env:
+          # Site-specific values come from repo variables so this workflow
+          # stays generic. SITE_DOMAIN must be set before the first deploy.
+          # SITE_SUBDOMAIN is optional (defaults to "code-explainer.<domain>").
+          CDK_DEFAULT_ACCOUNT: ${{ steps.account.outputs.id }}
+          CDK_DEFAULT_REGION: ${{ env.AWS_REGION }}
+          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+          SITE_SUBDOMAIN: ${{ vars.SITE_SUBDOMAIN }}
+          SITE_GITHUB_ORG: ${{ github.repository_owner }}
+          SITE_GITHUB_REPO: ${{ github.event.repository.name }}
         run: npx cdk deploy --require-approval never --outputs-file outputs.json
 
       - name: Extract stack outputs

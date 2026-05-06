@@ -4,8 +4,6 @@ A side-by-side viewer for code reviews where the explanation lives next to
 the diff. Built for reviewers who are strong on big-picture software
 thinking but aren't fluent in every part of the codebase they're reviewing.
 
-**Live demo: https://code-explainer.codebycarson.com**
-
 ```
 ┌─────────┬──────────────────────────────┬──────────────────────────┐
 │ TREE    │ Diff (full file, highlighted)│ Explanation cards         │
@@ -19,6 +17,10 @@ thinking but aren't fluent in every part of the codebase they're reviewing.
 │         │                              │ └──────────────────────┘  │
 └─────────┴──────────────────────────────┴──────────────────────────┘
 ```
+
+A live demo lives at https://code-explainer.codebycarson.com — but the
+expected way to use this tool is **locally**, on your own PRs. The
+deployment pieces in this repo are an example, not the main path.
 
 ## How it works
 
@@ -36,11 +38,11 @@ There are two pieces:
 
 The agent is the smart part. The viewer just shows what the agent wrote.
 
-## Use it on your own PR
+## Run it locally
 
-You'll need a coding agent — Claude Code, Cursor agent mode, or anything else
-that reads files and writes JSON. The agent reads [`AGENTS.md`](./AGENTS.md)
-as its instructions.
+This is the primary way to use the tool — no AWS, no deploy, no hosting.
+You'll need a coding agent (Claude Code, Cursor agent mode, anything that
+reads files and writes JSON), Node 20+, and a clone of this repo.
 
 ```bash
 git clone https://github.com/CarsonDavis/code-explainer.git
@@ -48,29 +50,24 @@ cd code-explainer
 npm install
 ```
 
-Point your agent at `AGENTS.md` and the repo + branches you want to review.
-For Claude Code, that looks like:
+Point your agent at [`AGENTS.md`](./AGENTS.md) and the repo + branches you
+want to review. For Claude Code, that looks like:
 
 ```bash
 claude "Read AGENTS.md. The repo is at <PATH>, base branch <BASE>, head branch <HEAD>. Write the review to public/reviews/<slug>.json."
 ```
 
-Then:
+Then start the dev server:
 
 ```bash
-npm run dev    # http://localhost:3000
+npm run dev    # http://localhost:3005
 ```
 
-Drop additional review files into `public/reviews/` and they show up on
-the home page automatically. There's nothing server-side; everything runs
-in the browser.
+Drop additional `<slug>.json` files into `public/reviews/` and they show up
+on the home page automatically. There's nothing server-side; everything
+runs in the browser.
 
-## Examples
-
-The [`examples/`](./examples/) directory has sample `review.json` files
-you can study to see what good output looks like. The deploy workflow
-copies every `examples/*.json` into `public/reviews/` at build time, so
-each one appears on the live home page.
+To try it without running the agent, copy in the bundled examples:
 
 ```bash
 mkdir -p public/reviews
@@ -78,13 +75,16 @@ cp examples/*.json public/reviews/
 npm run dev
 ```
 
+The [`examples/`](./examples/) directory has sample `review.json` files you
+can study to see what good output looks like.
+
 ## Stack
 
 - Next.js 15 (App Router) + React 19
 - TypeScript, Tailwind CSS v4
 - Shiki for syntax highlighting (VS Code grammars + Dark+ theme)
 - `diff` for line-level diffing
-- AWS CDK + GitHub Actions for the deployed site
+- AWS CDK + GitHub Actions, only used for the optional public-site deploy
 
 ## Project layout
 
@@ -110,8 +110,8 @@ lib/
 examples/                 # Sample reviews. CI bakes all of them into
                           # public/reviews/ at deploy time.
 
-cdk/                      # AWS CDK app for the live site
-.github/workflows/        # GitHub Actions deploy
+cdk/                      # Optional: AWS CDK app for hosting a public copy
+.github/workflows/        # Optional: GitHub Actions deploy
 
 AGENTS.md                 # Instructions for the generation agent
 ```
@@ -119,25 +119,46 @@ AGENTS.md                 # Instructions for the generation agent
 ## Customization
 
 - **Theme**: tweak the CSS variables in `app/globals.css` under `@theme`.
-- **Languages**: add to `SUPPORTED_LANGS` in `lib/highlighter.ts`. Shiki's
-  full bundled-language list is in its docs.
+- **Languages**: Shiki languages load lazily on first use, so you don't
+  have to opt in. Adjust `SUPPORTED_LANGS` in `lib/highlighter.ts` to
+  expand the allow-list.
 - **Layout proportions**: sidebar is `260px`, explanation column is `400px`,
   both inline grid templates in `ReviewLayout.tsx` and `FileSection.tsx`.
 
-## Deploying your own copy
+## Optional: deploy your own public copy
 
-The live site at `code-explainer.codebycarson.com` is deployed via the CDK
-stack in [`cdk/`](./cdk/) and the workflow in
-[`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml). To deploy
-your own copy:
+Most users never need this — local mode is the supported path. The bits
+under [`cdk/`](./cdk/) and [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml)
+are an example of how the live demo is hosted, in case you want to put
+your own copy on the public internet.
 
-1. Edit `cdk/app.py` and `cdk/stacks/code_explainer_stack.py` to point at
-   your AWS account, hosted zone, and subdomain.
-2. Bootstrap CDK in your account once: `cdk bootstrap`.
-3. Run `cdk deploy` from your laptop the first time — this creates the
-   GitHub Actions role.
-4. Add the role's ARN as an `AWS_ROLE_ARN` repository secret on your fork.
-5. Push to `main`. The workflow takes over from there.
+Nothing in `cdk/` is hardcoded to a particular AWS account or domain — all
+site-specific values come from environment variables set at deploy time:
+
+| Variable               | Required | Notes                                                       |
+| ---------------------- | -------- | ----------------------------------------------------------- |
+| `CDK_DEFAULT_ACCOUNT`  | yes      | Set automatically by AWS CLI/SDK or the deploy workflow     |
+| `CDK_DEFAULT_REGION`   | no       | Defaults to `us-east-1` (required for CloudFront)           |
+| `SITE_DOMAIN`          | yes      | Apex domain you own a Route 53 hosted zone for              |
+| `SITE_SUBDOMAIN`       | no       | Defaults to `code-explainer.<SITE_DOMAIN>`                  |
+| `SITE_GITHUB_ORG`      | yes      | GitHub org/user that owns your fork (auto-set in workflow)  |
+| `SITE_GITHUB_REPO`     | yes      | Forked repo name (auto-set in workflow)                     |
+
+To deploy:
+
+1. Bootstrap CDK in your account once: `cdk bootstrap`.
+2. From the `cdk/` directory, with your AWS profile active:
+   ```bash
+   SITE_DOMAIN=example.com SITE_GITHUB_ORG=you SITE_GITHUB_REPO=code-explainer \
+     uv run npx cdk deploy
+   ```
+   The first deploy creates the GitHub Actions role.
+3. Add the role's ARN as an `AWS_ROLE_ARN` repository **secret** on your
+   fork.
+4. Add `SITE_DOMAIN` (and optionally `SITE_SUBDOMAIN`) as repository
+   **variables** on your fork.
+5. Push to `main`. The workflow takes over from there — subsequent
+   deploys run automatically and don't need your laptop.
 
 ## License
 
