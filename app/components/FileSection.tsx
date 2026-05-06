@@ -7,6 +7,7 @@ import { ExplanationCard } from "./ExplanationCard";
 import { FileOverview } from "./FileOverview";
 import type { FileReview } from "@/lib/types";
 import type { HighlightMode } from "@/lib/highlightSettings";
+import type { TruncateMode } from "@/lib/diffTruncate";
 
 interface Props {
   file: FileReview;
@@ -14,6 +15,7 @@ interface Props {
    *  Generated globally across the review so colors rotate as you scroll. */
   explanationColors: string[];
   highlightMode: HighlightMode;
+  truncateMode: TruncateMode;
   /** When true, render only the file header (cheap) and skip the diff + cards.
    *  Used for progressive top-down rendering of long reviews — files outside the
    *  initial mount window stay deferred until idle-time scheduling reaches them. */
@@ -26,11 +28,21 @@ export function FileSection({
   file,
   explanationColors,
   highlightMode,
+  truncateMode,
   deferred = false,
 }: Props) {
   const [open, setOpen] = useState(true);
   const [overviewOpen, setOverviewOpen] = useState(true);
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  const [expandedSegments, setExpandedSegments] = useState<Set<number>>(
+    () => new Set()
+  );
+
+  // Reset expansions whenever the truncate mode flips so toggling between
+  // modes always starts from a clean state.
+  useEffect(() => {
+    setExpandedSegments(new Set());
+  }, [truncateMode]);
 
   const activeRanges: ActiveRange[] =
     highlightMode === "all"
@@ -103,13 +115,24 @@ export function FileSection({
     const t1 = setTimeout(layoutCards, 50);
     const t2 = setTimeout(layoutCards, 300);
     const t3 = setTimeout(layoutCards, 1000);
+
+    // Track diff-container height changes (expanded collapse stubs, shiki
+    // re-render, etc.) so cards re-anchor whenever rows shift.
+    const diffEl = diffContainerRef.current;
+    let ro: ResizeObserver | null = null;
+    if (diffEl && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => layoutCards());
+      ro.observe(diffEl);
+    }
+
     return () => {
       window.removeEventListener("resize", onResize);
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
+      ro?.disconnect();
     };
-  }, [layoutCards]);
+  }, [layoutCards, deferred]);
 
   return (
     <section
@@ -143,7 +166,21 @@ export function FileSection({
               data-tour="diff"
               className="border border-[var(--color-border)] rounded-md overflow-hidden bg-[var(--color-bg)]"
             >
-              <DiffViewer file={file} onLineRef={onLineRef} activeRanges={activeRanges} />
+              <DiffViewer
+                file={file}
+                onLineRef={onLineRef}
+                activeRanges={activeRanges}
+                truncateMode={truncateMode}
+                explanations={file.explanations}
+                expandedSegments={expandedSegments}
+                onExpandSegment={(segStart) =>
+                  setExpandedSegments((s) => {
+                    const next = new Set(s);
+                    next.add(segStart);
+                    return next;
+                  })
+                }
+              />
             </div>
           </div>
 

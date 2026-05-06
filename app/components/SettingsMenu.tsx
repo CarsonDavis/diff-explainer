@@ -3,14 +3,23 @@
 import { useEffect, useRef, useState } from "react";
 import { Settings, PlayCircle } from "lucide-react";
 import type { HighlightMode } from "@/lib/highlightSettings";
+import type { TruncateMode } from "@/lib/diffTruncate";
 
 interface Props {
   highlightMode: HighlightMode;
   onChange: (mode: HighlightMode) => void;
+  truncateMode: TruncateMode;
+  onTruncateChange: (mode: TruncateMode) => void;
   onReplayTour?: () => void;
 }
 
-export function SettingsMenu({ highlightMode, onChange, onReplayTour }: Props) {
+export function SettingsMenu({
+  highlightMode,
+  onChange,
+  truncateMode,
+  onTruncateChange,
+  onReplayTour,
+}: Props) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -65,6 +74,25 @@ export function SettingsMenu({ highlightMode, onChange, onReplayTour }: Props) {
             onSelect={() => onChange("all")}
           />
 
+          <div className="border-t border-[var(--color-border)] my-2" />
+          <div className="text-[11px] uppercase tracking-wide font-semibold text-[var(--color-fg-subtle)] mb-2">
+            File contents
+          </div>
+          <Option
+            name="truncate-mode"
+            label="Show only the diff"
+            description="Hide unchanged code far from any change. Click a stub to expand."
+            checked={truncateMode === "truncate"}
+            onSelect={() => onTruncateChange("truncate")}
+          />
+          <Option
+            name="truncate-mode"
+            label="Show full file"
+            description="Render every line, including unchanged sections."
+            checked={truncateMode === "full"}
+            onSelect={() => onTruncateChange("full")}
+          />
+
           {onReplayTour && (
             <>
               <div className="border-t border-[var(--color-border)] my-2" />
@@ -92,17 +120,19 @@ function Option({
   description,
   checked,
   onSelect,
+  name = "highlight-mode",
 }: {
   label: string;
   description: string;
   checked: boolean;
   onSelect: () => void;
+  name?: string;
 }) {
   return (
     <label className="flex gap-2 items-start py-1.5 px-1 rounded hover:bg-[var(--color-bg-hover)] cursor-pointer">
       <input
         type="radio"
-        name="highlight-mode"
+        name={name}
         checked={checked}
         onChange={onSelect}
         className="mt-1 accent-[var(--color-accent)]"
