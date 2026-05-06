@@ -1,16 +1,16 @@
-"""CDK stack for code-explainer.codebycarson.com.
+"""CDK stack for the code-explainer static site.
 
 Resources:
 - S3 bucket (private, OAC)
 - CloudFront distribution
 - ACM certificate (us-east-1, DNS-validated)
-- Route 53 alias (against the codebycarson.com zone owned by the
-  code-by-carson stack — read-only-shared)
-- IAM role assumed by GitHub Actions via the existing account-level
-  OIDC provider, scoped to CarsonDavis/code-explainer
+- Route 53 alias against the apex zone you already own
+- IAM role assumed by GitHub Actions via the account-level OIDC provider,
+  scoped to a specific GitHub org/repo
 
-Mirrors the deploy-pattern used by code-by-carson: same account, same
-region, same OIDC provider; this stack just owns its own subdomain.
+Site-specific values (domain, GitHub repo, etc.) are passed in by app.py,
+which reads them from environment variables. Nothing in this file hardcodes
+a particular account or domain.
 """
 
 from aws_cdk import (
@@ -28,24 +28,29 @@ from aws_cdk import (
 )
 from constructs import Construct
 
-DOMAIN = "codebycarson.com"
-SUBDOMAIN = f"code-explainer.{DOMAIN}"
-GITHUB_ORG = "CarsonDavis"
-GITHUB_REPO = "code-explainer"
-
 
 class CodeExplainerStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(
+        self,
+        scope: Construct,
+        construct_id: str,
+        *,
+        domain: str,
+        subdomain: str,
+        github_org: str,
+        github_repo: str,
+        **kwargs,
+    ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         # ── Hosted zone (shared, read-only from this stack) ────────
-        zone = route53.HostedZone.from_lookup(self, "Zone", domain_name=DOMAIN)
+        zone = route53.HostedZone.from_lookup(self, "Zone", domain_name=domain)
 
         # ── ACM certificate (us-east-1 for CloudFront) ─────────────
         certificate = acm.Certificate(
             self,
             "SiteCert",
-            domain_name=SUBDOMAIN,
+            domain_name=subdomain,
             validation=acm.CertificateValidation.from_dns(zone),
         )
 
@@ -72,7 +77,7 @@ class CodeExplainerStack(Stack):
                 compress=True,
                 response_headers_policy=cloudfront.ResponseHeadersPolicy.SECURITY_HEADERS,
             ),
-            domain_names=[SUBDOMAIN],
+            domain_names=[subdomain],
             certificate=certificate,
             default_root_object="index.html",
             minimum_protocol_version=cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
@@ -97,7 +102,7 @@ class CodeExplainerStack(Stack):
             self,
             "SubdomainAlias",
             zone=zone,
-            record_name=SUBDOMAIN,
+            record_name=subdomain,
             target=route53.RecordTarget.from_alias(
                 targets.CloudFrontTarget(distribution)
             ),
@@ -123,7 +128,7 @@ class CodeExplainerStack(Stack):
                         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
                     },
                     "StringLike": {
-                        "token.actions.githubusercontent.com:sub": f"repo:{GITHUB_ORG}/{GITHUB_REPO}:*",
+                        "token.actions.githubusercontent.com:sub": f"repo:{github_org}/{github_repo}:*",
                     },
                 },
                 assume_role_action="sts:AssumeRoleWithWebIdentity",
@@ -172,5 +177,5 @@ class CodeExplainerStack(Stack):
         # ── Outputs ────────────────────────────────────────────────
         CfnOutput(self, "SiteBucketName", value=site_bucket.bucket_name)
         CfnOutput(self, "DistributionId", value=distribution.distribution_id)
-        CfnOutput(self, "SiteUrl", value=f"https://{SUBDOMAIN}")
+        CfnOutput(self, "SiteUrl", value=f"https://{subdomain}")
         CfnOutput(self, "GitHubActionsRoleArn", value=deploy_role.role_arn)

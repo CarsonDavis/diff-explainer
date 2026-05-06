@@ -10,6 +10,7 @@ public/reviews/
 
 # CDK
 cdk/cdk.out/
+cdk/cdk.context.json
 cdk/.venv/
 cdk/__pycache__/
 cdk/**/__pycache__/
