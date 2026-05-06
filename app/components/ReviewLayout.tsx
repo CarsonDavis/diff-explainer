@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { GitBranch, FileText } from "lucide-react";
+import Link from "next/link";
+import { GitBranch, FileText, ChevronLeft } from "lucide-react";
 import { FileTree } from "./FileTree";
 import { FileSection, encodePath } from "./FileSection";
 import { buildTree } from "@/lib/fileTree";
@@ -28,6 +29,13 @@ export function ReviewLayout({ data }: Props) {
       {/* SIDEBAR */}
       <aside className="bg-[var(--color-bg-sidebar)] border-r border-[var(--color-border)] flex flex-col overflow-hidden">
         <div className="px-3 py-3 border-b border-[var(--color-border)]">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1 text-[11px] text-[var(--color-fg-subtle)] hover:text-[var(--color-accent)] mb-2"
+          >
+            <ChevronLeft size={11} />
+            All reviews
+          </Link>
           <div className="text-xs uppercase tracking-wide text-[var(--color-fg-subtle)] mb-1">
             {data.metadata.repoName}
           </div>

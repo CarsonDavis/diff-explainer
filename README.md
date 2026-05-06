@@ -29,9 +29,10 @@ There are two pieces:
    — it covers workflow (fetch the diff, build a model of the repo, write
    per-change explanations), the JSON schema, and the tone/depth rules
    that keep explanations useful instead of bloated.
-2. **This web app** is a viewer. It loads `public/review.json`, computes
-   line-level diffs client-side, syntax-highlights via Shiki (the same
-   highlighter VS Code uses), and renders the three-column layout.
+2. **This web app** is a viewer. It scans `public/reviews/*.json`, lists
+   each review on the home page, and renders a chosen review at
+   `/reviews/<slug>/` — diff and explanations side by side, syntax
+   highlighted via Shiki (the same grammars VS Code uses).
 
 The agent is the smart part. The viewer just shows what the agent wrote.
 
@@ -51,27 +52,29 @@ Point your agent at `AGENTS.md` and the repo + branches you want to review.
 For Claude Code, that looks like:
 
 ```bash
-claude "Read AGENTS.md. The repo is at <PATH>, base branch <BASE>, head branch <HEAD>. Generate review.json."
+claude "Read AGENTS.md. The repo is at <PATH>, base branch <BASE>, head branch <HEAD>. Write the review to public/reviews/<slug>.json."
 ```
 
-The agent will write `public/review.json`. Then:
+Then:
 
 ```bash
 npm run dev    # http://localhost:3000
 ```
 
-Drop in a different `public/review.json` and refresh. There's nothing
-server-side; everything runs in the browser.
+Drop additional review files into `public/reviews/` and they show up on
+the home page automatically. There's nothing server-side; everything runs
+in the browser.
 
 ## Examples
 
-The [`examples/`](./examples/) directory has sample `review.json` files you
-can swap in. The live site bakes `examples/login-rate-limit.json` into the
-build — the same JSON you can study locally to see what good output looks
-like.
+The [`examples/`](./examples/) directory has sample `review.json` files
+you can study to see what good output looks like. The deploy workflow
+copies every `examples/*.json` into `public/reviews/` at build time, so
+each one appears on the live home page.
 
 ```bash
-cp examples/login-rate-limit.json public/review.json
+mkdir -p public/reviews
+cp examples/*.json public/reviews/
 npm run dev
 ```
 
@@ -87,23 +90,25 @@ npm run dev
 
 ```
 app/
-  page.tsx                # Loads public/review.json at build time
+  page.tsx                # Home: lists reviews from public/reviews/
+  reviews/[slug]/page.tsx # Renders one review (SSG via generateStaticParams)
   components/
     ReviewLayout.tsx      # Three-column shell + sidebar header
     FileTree.tsx          # Collapsible tree with A/M/D/R badges
     FileSection.tsx       # Per-file: header, overview, diff + cards
-    DiffViewer.tsx        # Full-file diff renderer with line refs
+    DiffViewer.tsx        # Side-by-side diff with intra-line word highlight
     ExplanationCard.tsx   # Single What/Why/Impact card
     FileOverview.tsx      # Per-file purpose / background / key pieces
 
 lib/
-  types.ts                # ReviewData / FileReview / etc.
-  diff.ts                 # computeDiff(old, new) → DiffLine[]
+  types.ts                # ReviewData / FileReview / DiffRow / etc.
+  diff.ts                 # computeDiff(old, new) → DiffRow[]
   fileTree.ts             # buildTree(files) → TreeNode[]
-  highlighter.ts          # Shiki singleton + line-by-line highlight
+  highlighter.ts          # Shiki singleton + line-by-line tokens
+  reviews.ts              # listReviewSlugs / listReviewSummaries
 
-examples/                 # Public sample reviews. CI bakes one of these
-                          # into the deployed build.
+examples/                 # Sample reviews. CI bakes all of them into
+                          # public/reviews/ at deploy time.
 
 cdk/                      # AWS CDK app for the live site
 .github/workflows/        # GitHub Actions deploy

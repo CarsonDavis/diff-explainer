@@ -5,8 +5,8 @@ out/
 *.tsbuildinfo
 .DS_Store
 
-# Local review file — the deployed site bakes examples/<example>.json instead
-public/review.json
+# Local review files — the deployed site bakes examples/*.json instead
+public/reviews/
 
 # CDK
 cdk/cdk.out/
