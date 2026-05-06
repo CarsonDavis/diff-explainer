@@ -24,23 +24,23 @@
       "newContent": "\"\"\"In-memory token-bucket rate limiter.\n\nIntentionally simple: a dict of buckets keyed by a caller-supplied string\n(typically a client IP). Not safe across processes — see the module docstring\nin `auth.py` for why that's fine for our use case.\n\"\"\"\n\nfrom __future__ import annotations\n\nimport threading\nimport time\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass TokenBucket:\n    tokens: float\n    last_refill: float\n\n\nclass RateLimiter:\n    def __init__(self, capacity: int, refill_per_second: float) -> None:\n        self._capacity = capacity\n        self._refill_per_second = refill_per_second\n        self._buckets: dict[str, TokenBucket] = {}\n        self._lock = threading.Lock()\n\n    def allow(self, key: str) -> bool:\n        now = time.monotonic()\n        with self._lock:\n            bucket = self._buckets.get(key)\n            if bucket is None:\n                bucket = TokenBucket(tokens=self._capacity, last_refill=now)\n                self._buckets[key] = bucket\n\n            elapsed = now - bucket.last_refill\n            bucket.tokens = min(\n                self._capacity,\n                bucket.tokens + elapsed * self._refill_per_second,\n            )\n            bucket.last_refill = now\n\n            if bucket.tokens >= 1.0:\n                bucket.tokens -= 1.0\n                return True\n            return False\n",
       "explanations": [
         {
-          "startLine": 14,
-          "endLine": 17,
+          "startLine": 15,
+          "endLine": 18,
           "title": "TokenBucket dataclass",
           "what": "Defines the per-key state: how many tokens are left and when we last refilled.",
           "why": "Pulled into a tiny dataclass so the bucket math reads cleanly. `tokens` is a float because partial tokens accumulate between requests as time passes.",
           "impact": "Each tracked key (client IP) holds two floats. With ~10k unique IPs in a hot window that's well under a megabyte of state."
         },
         {
-          "startLine": 20,
-          "endLine": 25,
+          "startLine": 21,
+          "endLine": 26,
           "title": "Constructor + bucket store",
           "what": "Holds two policy knobs (capacity + refill rate) and a dict of buckets, plus a lock for thread safety.",
           "why": "Capacity sets how big a burst is allowed; refill rate sets the long-run sustained rate. The lock matters because Flask serves requests on multiple threads — without it, two threads could both decrement `tokens` from the same bucket and let a request through that should have been blocked."
         },
         {
-          "startLine": 27,
-          "endLine": 44,
+          "startLine": 28,
+          "endLine": 46,
           "title": "allow(): the core rate-limit check",
           "what": "Looks up (or creates) the bucket for `key`, refills it based on elapsed time, then consumes one token if at least one is available.",
           "why": "This is the standard token-bucket algorithm. Computing the refill lazily — only when we're called — avoids a background timer thread and keeps the limiter accurate even after long idle periods.",
@@ -99,7 +99,7 @@
       "newContent": "import pytest\n\nfrom src import auth as auth_module\nfrom src.rate_limiter import RateLimiter\n\n\n@pytest.fixture(autouse=True)\ndef _reset_limiter():\n    # Each test gets a fresh limiter so attempts from previous tests don't carry over.\n    auth_module._login_limiter = RateLimiter(capacity=5, refill_per_second=1 / 30)\n    yield\n\n\ndef test_login_success(client, valid_user):\n    res = client.post(\"/auth/login\", json={\n        \"username\": valid_user.username,\n        \"password\": valid_user.password,\n    })\n    assert res.status_code == 200\n    assert \"token\" in res.json\n\n\ndef test_login_bad_password(client, valid_user):\n    res = client.post(\"/auth/login\", json={\n        \"username\": valid_user.username,\n        \"password\": \"nope\",\n    })\n    assert res.status_code == 401\n\n\ndef test_login_rate_limited_after_burst(client, valid_user):\n    bad = {\"username\": valid_user.username, \"password\": \"nope\"}\n    # Five bad attempts use up the bucket.\n    for _ in range(5):\n        assert client.post(\"/auth/login\", json=bad).status_code == 401\n    # The sixth comes back as 429, not 401.\n    assert client.post(\"/auth/login\", json=bad).status_code == 429\n",
       "explanations": [
         {
-          "startLine": 3,
+          "startLine": 7,
           "endLine": 11,
           "title": "Auto-reset fixture for the limiter",
           "what": "An autouse fixture that replaces the module-level limiter with a fresh one before each test.",
@@ -107,8 +107,8 @@
           "impact": "Reaching into `auth_module._login_limiter` is a bit ugly — the underscore signals it's private — but the alternative (dependency injection through Flask config) felt like a lot of plumbing for one test seam."
         },
         {
-          "startLine": 30,
-          "endLine": 36,
+          "startLine": 31,
+          "endLine": 37,
           "title": "New test: 6th attempt is rate-limited",
           "what": "Sends 5 bad logins, asserts each returns 401, then sends a 6th and asserts it returns 429.",
           "why": "Locks in the contract: capacity is 5 and the limiter sits in front of credential verification. If someone later moves the gate after the verify step (or bumps the capacity without thinking), this test fails.",
