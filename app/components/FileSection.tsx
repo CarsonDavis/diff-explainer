@@ -33,7 +33,10 @@ export function FileSection({ file }: Props) {
     const explanationsContainer = explanationsContainerRef.current;
     if (!diffContainer || !explanationsContainer) return;
 
-    const containerTop = diffContainer.getBoundingClientRect().top;
+    // Cards are absolutely positioned inside the explanations column, so the
+    // baseline for `top: Npx` must be that column's top — NOT the diff
+    // container's, which sits below the overview block.
+    const containerTop = explanationsContainer.getBoundingClientRect().top;
     let lastBottom = 0;
 
     // Sort explanations by anchor line so we stack them top-to-bottom.

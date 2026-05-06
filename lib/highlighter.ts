@@ -1,4 +1,9 @@
-import type { Highlighter, BundledLanguage, BundledTheme } from "shiki";
+import type {
+  Highlighter,
+  BundledLanguage,
+  BundledTheme,
+  ThemedToken,
+} from "shiki";
 
 let highlighterPromise: Promise<Highlighter> | null = null;
 
@@ -62,25 +67,24 @@ export function normalizeLang(lang: string): string {
   return (SUPPORTED_LANGS as string[]).includes(resolved) ? resolved : "text";
 }
 
+export type LineToken = Pick<ThemedToken, "content" | "color">;
+
 /**
- * Highlight a whole file and return one HTML string per line.
- * Empty input returns []. The returned strings are the inner HTML of each
- * `<span class="line">…</span>` Shiki produces — safe to render via
- * dangerouslySetInnerHTML inside a styled container.
+ * Tokenize a whole file and return one token array per line. Tokens carry
+ * their syntax color so the diff viewer can render them with optional
+ * intra-line word-diff overlays on top.
  */
-export async function highlightToLines(code: string, lang: string): Promise<string[]> {
+export async function highlightToTokens(
+  code: string,
+  lang: string
+): Promise<LineToken[][]> {
   if (!code) return [];
   const highlighter = await getHighlighter();
-  const html = highlighter.codeToHtml(code, { lang: normalizeLang(lang), theme: THEME });
-
-  // Shiki output looks like:
-  // <pre class="shiki ..."><code><span class="line">...</span><span class="line">...</span></code></pre>
-  // Split out each line's inner HTML.
-  const lineRegex = /<span class="line">([\s\S]*?)<\/span>(?=<span class="line">|<\/code>)/g;
-  const lines: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = lineRegex.exec(html)) !== null) {
-    lines.push(match[1]);
-  }
-  return lines;
+  const result = highlighter.codeToTokens(code, {
+    lang: normalizeLang(lang) as BundledLanguage,
+    theme: THEME,
+  });
+  return result.tokens.map((line) =>
+    line.map((t) => ({ content: t.content, color: t.color }))
+  );
 }
