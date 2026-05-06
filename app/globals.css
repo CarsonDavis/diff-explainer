@@ -23,6 +23,9 @@
   --color-diff-remove-bg: rgba(248, 81, 73, 0.15);
   --color-diff-remove-bg-strong: rgba(248, 81, 73, 0.30);
   --color-diff-remove-border: rgba(248, 81, 73, 0.6);
+  /* Faint shade for empty cells in the side-by-side diff (the "no line on
+     this side" half of an add or remove row). */
+  --color-diff-blank-bg: rgba(255, 255, 255, 0.025);
 
   /* File status indicators */
   --color-status-added: #4ec9b0;
@@ -75,4 +78,14 @@ pre.shiki, pre.shiki code {
   background-color: transparent !important;
   padding: 0 !important;
   margin: 0 !important;
+}
+
+/* Intra-line word-diff highlight on paired modified rows. The cell already
+   has the light add/remove bg; these classes layer a darker bg over the
+   characters that actually changed. */
+.diff-word-remove {
+  background-color: var(--color-diff-remove-bg-strong);
+}
+.diff-word-add {
+  background-color: var(--color-diff-add-bg-strong);
 }

@@ -1,34 +1,36 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { diffWordsWithSpace } from "diff";
 import { computeDiff } from "@/lib/diff";
-import { highlightToLines } from "@/lib/highlighter";
-import type { DiffLine, FileReview } from "@/lib/types";
+import { highlightToTokens, type LineToken } from "@/lib/highlighter";
+import type { DiffRow, FileReview } from "@/lib/types";
 
 interface DiffViewerProps {
   file: FileReview;
-  /** Called for each line so the parent can position explanations next to it. */
+  /** Called for each row whose right side has a new-file line number, so the
+   *  parent can position explanation cards next to that row. */
   onLineRef?: (newLine: number, el: HTMLDivElement | null) => void;
 }
 
 export function DiffViewer({ file, onLineRef }: DiffViewerProps) {
-  const lines: DiffLine[] = useMemo(
+  const rows: DiffRow[] = useMemo(
     () => computeDiff(file.oldContent, file.newContent),
     [file.oldContent, file.newContent]
   );
 
-  const [oldHl, setOldHl] = useState<string[] | null>(null);
-  const [newHl, setNewHl] = useState<string[] | null>(null);
+  const [oldTok, setOldTok] = useState<LineToken[][] | null>(null);
+  const [newTok, setNewTok] = useState<LineToken[][] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      highlightToLines(file.oldContent, file.language),
-      highlightToLines(file.newContent, file.language),
+      highlightToTokens(file.oldContent, file.language),
+      highlightToTokens(file.newContent, file.language),
     ]).then(([o, n]) => {
       if (!cancelled) {
-        setOldHl(o);
-        setNewHl(n);
+        setOldTok(o);
+        setNewTok(n);
       }
     });
     return () => {
@@ -36,16 +38,16 @@ export function DiffViewer({ file, onLineRef }: DiffViewerProps) {
     };
   }, [file.oldContent, file.newContent, file.language]);
 
-  const ready = oldHl !== null && newHl !== null;
+  const ready = oldTok !== null && newTok !== null;
 
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {lines.map((line, idx) => (
-        <DiffRow
+      {rows.map((row, idx) => (
+        <DiffRowView
           key={idx}
-          line={line}
-          oldHl={oldHl}
-          newHl={newHl}
+          row={row}
+          oldTok={oldTok}
+          newTok={newTok}
           ready={ready}
           onLineRef={onLineRef}
         />
@@ -54,72 +56,169 @@ export function DiffViewer({ file, onLineRef }: DiffViewerProps) {
   );
 }
 
-interface DiffRowProps {
-  line: DiffLine;
-  oldHl: string[] | null;
-  newHl: string[] | null;
+interface DiffRowViewProps {
+  row: DiffRow;
+  oldTok: LineToken[][] | null;
+  newTok: LineToken[][] | null;
   ready: boolean;
   onLineRef?: (newLine: number, el: HTMLDivElement | null) => void;
 }
 
-function DiffRow({ line, oldHl, newHl, ready, onLineRef }: DiffRowProps) {
-  // For removed lines, pull highlight from the old file (1-indexed).
-  // For context/added, pull from the new file.
-  let html = "";
-  if (ready) {
-    if (line.type === "remove" && line.oldLine != null && oldHl) {
-      html = oldHl[line.oldLine - 1] ?? escapeHtml(line.content);
-    } else if (line.newLine != null && newHl) {
-      html = newHl[line.newLine - 1] ?? escapeHtml(line.content);
-    } else {
-      html = escapeHtml(line.content);
-    }
-  } else {
-    html = escapeHtml(line.content);
-  }
+function DiffRowView({ row, oldTok, newTok, ready, onLineRef }: DiffRowViewProps) {
+  const leftTokens =
+    ready && row.left && oldTok ? oldTok[row.left.line - 1] : undefined;
+  const rightTokens =
+    ready && row.right && newTok ? newTok[row.right.line - 1] : undefined;
 
-  const bg =
-    line.type === "add"
-      ? "bg-[var(--color-diff-add-bg)]"
-      : line.type === "remove"
-      ? "bg-[var(--color-diff-remove-bg)]"
+  // For paired modified rows, compute word-level diff so we can show which
+  // tokens within the line actually changed.
+  const wordRanges = useMemo(() => {
+    if (row.type !== "modified" || !row.left || !row.right) {
+      return { left: [] as Range[], right: [] as Range[] };
+    }
+    return computeWordDiff(row.left.content, row.right.content);
+  }, [row]);
+
+  const leftHtml =
+    leftTokens != null
+      ? renderLine(leftTokens, wordRanges.left, "left")
+      : row.left
+      ? escapeHtml(row.left.content)
+      : "";
+  const rightHtml =
+    rightTokens != null
+      ? renderLine(rightTokens, wordRanges.right, "right")
+      : row.right
+      ? escapeHtml(row.right.content)
       : "";
 
-  const sign = line.type === "add" ? "+" : line.type === "remove" ? "-" : " ";
-  const signColor =
-    line.type === "add"
-      ? "text-[var(--color-status-added)]"
-      : line.type === "remove"
-      ? "text-[var(--color-status-deleted)]"
-      : "text-[var(--color-fg-subtle)]";
+  const leftBg =
+    row.type === "remove" || row.type === "modified"
+      ? "bg-[var(--color-diff-remove-bg)]"
+      : row.type === "add"
+      ? "bg-[var(--color-diff-blank-bg)]"
+      : "";
+  const rightBg =
+    row.type === "add" || row.type === "modified"
+      ? "bg-[var(--color-diff-add-bg)]"
+      : row.type === "remove"
+      ? "bg-[var(--color-diff-blank-bg)]"
+      : "";
 
   return (
     <div
       ref={(el) => {
-        if (line.newLine != null && onLineRef) onLineRef(line.newLine, el);
+        if (row.right && onLineRef) onLineRef(row.right.line, el);
       }}
-      data-new-line={line.newLine ?? ""}
-      data-old-line={line.oldLine ?? ""}
-      className={`flex ${bg} hover:bg-[var(--color-bg-hover)]/40`}
+      data-new-line={row.right?.line ?? ""}
+      data-old-line={row.left?.line ?? ""}
+      className="grid grid-cols-[3rem_minmax(0,1fr)_3rem_minmax(0,1fr)]"
     >
-      <LineNumber value={line.oldLine} />
-      <LineNumber value={line.newLine} />
-      <span className={`w-4 shrink-0 text-center ${signColor}`}>{sign}</span>
-      <span
-        className="whitespace-pre flex-1 pr-4"
-        // Shiki output is sanitized HTML; line-level fragments are safe.
-        dangerouslySetInnerHTML={{ __html: html.length === 0 ? "&nbsp;" : html }}
+      <LineNumber value={row.left?.line} bg={leftBg} />
+      <CodeCell html={leftHtml} bg={leftBg} />
+      <LineNumber
+        value={row.right?.line}
+        bg={rightBg}
+        className="border-l border-[var(--color-border)]"
       />
+      <CodeCell html={rightHtml} bg={rightBg} />
     </div>
   );
 }
 
-function LineNumber({ value }: { value?: number }) {
+function LineNumber({
+  value,
+  bg,
+  className = "",
+}: {
+  value?: number;
+  bg: string;
+  className?: string;
+}) {
   return (
-    <span className="w-12 shrink-0 text-right pr-3 text-[var(--color-fg-subtle)] select-none">
+    <span
+      className={`shrink-0 text-right pr-2 pl-1 text-[var(--color-fg-subtle)] select-none ${bg} ${className}`}
+    >
       {value ?? ""}
     </span>
   );
+}
+
+function CodeCell({ html, bg }: { html: string; bg: string }) {
+  return (
+    <span
+      className={`whitespace-pre overflow-x-auto pl-2 pr-4 ${bg}`}
+      dangerouslySetInnerHTML={{ __html: html.length === 0 ? "&nbsp;" : html }}
+    />
+  );
+}
+
+// ── intra-line word diff ──────────────────────────────────────────────────
+
+interface Range {
+  start: number;
+  end: number;
+}
+
+function computeWordDiff(
+  oldLine: string,
+  newLine: string
+): { left: Range[]; right: Range[] } {
+  const parts = diffWordsWithSpace(oldLine, newLine);
+  const left: Range[] = [];
+  const right: Range[] = [];
+  let oldPos = 0;
+  let newPos = 0;
+  for (const p of parts) {
+    const len = p.value.length;
+    if (p.removed) {
+      left.push({ start: oldPos, end: oldPos + len });
+      oldPos += len;
+    } else if (p.added) {
+      right.push({ start: newPos, end: newPos + len });
+      newPos += len;
+    } else {
+      oldPos += len;
+      newPos += len;
+    }
+  }
+  return { left, right };
+}
+
+/**
+ * Build the HTML for one line: walk Shiki's color tokens and split them at
+ * any word-diff boundary so the changed slices can carry a darker bg class.
+ */
+function renderLine(
+  tokens: LineToken[],
+  ranges: Range[],
+  side: "left" | "right"
+): string {
+  if (tokens.length === 0) return "";
+  const isChanged = (i: number) => {
+    for (const r of ranges) if (i >= r.start && i < r.end) return true;
+    return false;
+  };
+  const out: string[] = [];
+  let pos = 0;
+  for (const tok of tokens) {
+    const text = tok.content;
+    let i = 0;
+    while (i < text.length) {
+      const changed = isChanged(pos + i);
+      let j = i + 1;
+      while (j < text.length && isChanged(pos + j) === changed) j++;
+      const piece = escapeHtml(text.slice(i, j));
+      const colorAttr = tok.color ? ` style="color:${tok.color}"` : "";
+      const classAttr = changed
+        ? ` class="${side === "left" ? "diff-word-remove" : "diff-word-add"}"`
+        : "";
+      out.push(`<span${classAttr}${colorAttr}>${piece}</span>`);
+      i = j;
+    }
+    pos += text.length;
+  }
+  return out.join("");
 }
 
 function escapeHtml(s: string): string {

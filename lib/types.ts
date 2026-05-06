@@ -59,12 +59,15 @@ export interface ReviewData {
   files: FileReview[];
 }
 
-/** A single rendered line in the diff view. */
-export interface DiffLine {
-  type: "context" | "add" | "remove";
-  /** Line number in the old file, if applicable. */
-  oldLine?: number;
-  /** Line number in the new file, if applicable. */
-  newLine?: number;
-  content: string;
+/** One rendered row in the side-by-side diff. */
+export interface DiffRow {
+  /**
+   * - "context": same line on both sides
+   * - "modified": paired remove+add (both sides present, different content)
+   * - "add": only right side (new line)
+   * - "remove": only left side (old line)
+   */
+  type: "context" | "modified" | "add" | "remove";
+  left?: { line: number; content: string };
+  right?: { line: number; content: string };
 }
