@@ -49,7 +49,15 @@ const STEPS: Step[] = [
   },
 ];
 
-export function runTour(): void {
+export interface TourCallbacks {
+  /** Fired right before the tour starts. Use to pause page-mutating activity
+   *  (progressive mounting, etc.) so the spotlight target stays put. */
+  onStart?: () => void;
+  /** Fired when the tour is dismissed or completed. */
+  onEnd?: () => void;
+}
+
+export function runTour(callbacks?: TourCallbacks): void {
   if (typeof window === "undefined") return;
 
   const steps = STEPS.filter((s) => document.querySelector(s.selector));
@@ -71,8 +79,10 @@ export function runTour(): void {
       } catch {
         /* private mode etc — fine to ignore */
       }
+      callbacks?.onEnd?.();
     },
   });
+  callbacks?.onStart?.();
   d.drive();
 }
 
