@@ -6,16 +6,53 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 
 interface ExplanationCardProps {
   explanation: ChangeExplanation;
+  active: boolean;
+  /** Accent color for this card's range (border ring when active). */
+  color: string;
+  /** When false, clicking the card does nothing — used for "highlight all" mode. */
+  interactive: boolean;
+  onToggle: () => void;
 }
 
-export function ExplanationCard({ explanation }: ExplanationCardProps) {
+export function ExplanationCard({
+  explanation,
+  active,
+  color,
+  interactive,
+  onToggle,
+}: ExplanationCardProps) {
   const [open, setOpen] = useState(true);
 
+  const activeStyle: React.CSSProperties = active
+    ? { borderColor: color, boxShadow: `0 0 0 2px ${color}` }
+    : {};
+
   return (
-    <div className="border border-[var(--color-border)] rounded-md bg-[var(--color-bg-elevated)] overflow-hidden">
+    <div
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={interactive ? onToggle : undefined}
+      onKeyDown={
+        interactive
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onToggle();
+              }
+            }
+          : undefined
+      }
+      style={activeStyle}
+      className={`border rounded-md bg-[var(--color-bg-elevated)] overflow-hidden transition-shadow ${
+        interactive ? "cursor-pointer" : ""
+      } ${active ? "" : "border-[var(--color-border)]"}`}
+    >
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
         className="w-full flex items-center gap-1.5 px-3 py-2 hover:bg-[var(--color-bg-hover)] text-left"
       >
         {open ? (

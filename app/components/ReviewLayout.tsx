@@ -5,7 +5,10 @@ import Link from "next/link";
 import { GitBranch, FileText, ChevronLeft } from "lucide-react";
 import { FileTree } from "./FileTree";
 import { FileSection, encodePath } from "./FileSection";
+import { SettingsMenu } from "./SettingsMenu";
 import { buildTree } from "@/lib/fileTree";
+import { paletteColor } from "@/lib/highlightPalette";
+import { DEFAULT_HIGHLIGHT_MODE, type HighlightMode } from "@/lib/highlightSettings";
 import type { ReviewData } from "@/lib/types";
 
 interface Props {
@@ -17,6 +20,21 @@ export function ReviewLayout({ data }: Props) {
   const [selectedPath, setSelectedPath] = useState<string | null>(
     data.files[0]?.path ?? null
   );
+  const [highlightMode, setHighlightMode] = useState<HighlightMode>(
+    DEFAULT_HIGHLIGHT_MODE
+  );
+
+  // Assign a palette color to each explanation in display order across the
+  // whole review, so colors rotate naturally as the reader scrolls down.
+  const colorsByFile = useMemo(() => {
+    const map = new Map<string, string[]>();
+    let counter = 0;
+    for (const file of data.files) {
+      const colors = file.explanations.map(() => paletteColor(counter++));
+      map.set(file.path, colors);
+    }
+    return map;
+  }, [data.files]);
 
   const handleSelect = (path: string) => {
     setSelectedPath(path);
@@ -64,20 +82,30 @@ export function ReviewLayout({ data }: Props) {
       {/* MAIN */}
       <main className="overflow-y-auto px-4 py-4">
         <header className="mb-4 pb-4 border-b border-[var(--color-border)]">
-          {data.metadata.title && (
-            <h1 className="text-lg font-semibold mb-1">{data.metadata.title}</h1>
-          )}
-          <p className="text-[13px] text-[var(--color-fg-muted)] leading-relaxed whitespace-pre-wrap">
-            {data.metadata.summary}
-          </p>
-          <div className="text-[11px] text-[var(--color-fg-subtle)] mt-2">
-            Generated {new Date(data.metadata.generatedAt).toLocaleString()}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              {data.metadata.title && (
+                <h1 className="text-lg font-semibold mb-1">{data.metadata.title}</h1>
+              )}
+              <p className="text-[13px] text-[var(--color-fg-muted)] leading-relaxed whitespace-pre-wrap">
+                {data.metadata.summary}
+              </p>
+              <div className="text-[11px] text-[var(--color-fg-subtle)] mt-2">
+                Generated {new Date(data.metadata.generatedAt).toLocaleString()}
+              </div>
+            </div>
+            <SettingsMenu highlightMode={highlightMode} onChange={setHighlightMode} />
           </div>
         </header>
 
         <div className="space-y-4">
           {data.files.map((file) => (
-            <FileSection key={file.path} file={file} />
+            <FileSection
+              key={file.path}
+              file={file}
+              explanationColors={colorsByFile.get(file.path) ?? []}
+              highlightMode={highlightMode}
+            />
           ))}
         </div>
       </main>
