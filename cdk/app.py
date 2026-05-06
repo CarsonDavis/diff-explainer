@@ -37,12 +37,20 @@ def _required(name: str) -> str:
     return value
 
 
+def _optional(name: str, default: str) -> str:
+    # `os.environ.get(name, default)` only returns the default when the key is
+    # absent — not when it's set to an empty string. GitHub Actions env: blocks
+    # interpolating an unset `vars.X` produce empty strings, so we coerce them
+    # to the default explicitly.
+    return os.environ.get(name) or default
+
+
 app = cdk.App()
 
 ACCOUNT = _required("CDK_DEFAULT_ACCOUNT")
-REGION = os.environ.get("CDK_DEFAULT_REGION", "us-east-1")
+REGION = _optional("CDK_DEFAULT_REGION", "us-east-1")
 DOMAIN = _required("SITE_DOMAIN")
-SUBDOMAIN = os.environ.get("SITE_SUBDOMAIN", f"code-explainer.{DOMAIN}")
+SUBDOMAIN = _optional("SITE_SUBDOMAIN", f"code-explainer.{DOMAIN}")
 GITHUB_ORG = _required("SITE_GITHUB_ORG")
 GITHUB_REPO = _required("SITE_GITHUB_REPO")
 
