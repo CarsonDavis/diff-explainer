@@ -60,9 +60,12 @@ export function ReviewLayout({ data }: Props) {
   // the count during browser idle time so subsequent files mount one at a
   // time while the user is reading. Keeps the initial hydration tree small
   // (otherwise we hydrate 5,000+ row elements at once and the cards land in
-  // the wrong place for a second).
+  // the wrong place for a second). Paused while the tour is running so
+  // mid-tour reflows don't drag the spotlight out from under itself.
   const [mountedCount, setMountedCount] = useState(1);
+  const [tourActive, setTourActive] = useState(false);
   useEffect(() => {
+    if (tourActive) return;
     if (mountedCount >= data.files.length) return;
     const ric: (cb: () => void) => number =
       typeof window !== "undefined" && "requestIdleCallback" in window
@@ -76,14 +79,56 @@ export function ReviewLayout({ data }: Props) {
       setMountedCount((c) => Math.min(c + 1, data.files.length))
     );
     return () => cic(id);
-  }, [mountedCount, data.files.length]);
+  }, [mountedCount, data.files.length, tourActive]);
 
-  // First-visit auto-tour. Wait long enough for shiki highlighting + card
-  // layout to settle so the tour spotlights land on positioned elements.
+  const startTour = () => {
+    runTour({
+      onStart: () => setTourActive(true),
+      onEnd: () => setTourActive(false),
+    });
+  };
+
+  // First-visit auto-tour. Wait until we have a positioned explanation card
+  // in the DOM (i.e. the first file has finished laying out) so the tour's
+  // spotlight lands on the card's real position, not its initial top:0
+  // fallback. Falls back to a hard cap so we always fire eventually.
   useEffect(() => {
     if (hasSeenTour()) return;
-    const t = setTimeout(() => runTour(), 800);
-    return () => clearTimeout(t);
+    let cancelled = false;
+    const isReady = () => {
+      const card = document.querySelector(
+        '[data-tour="explanation"]'
+      )?.parentElement as HTMLElement | null;
+      // The wrapper gets style.top set imperatively by layoutCards once the
+      // diff rows are mounted and measured. Until then it has no inline top.
+      return !!card?.style.top;
+    };
+    const fire = () => {
+      if (cancelled) return;
+      startTour();
+    };
+    if (isReady()) {
+      const id = window.setTimeout(fire, 100);
+      return () => {
+        cancelled = true;
+        clearTimeout(id);
+      };
+    }
+    const intervalId = window.setInterval(() => {
+      if (isReady()) {
+        clearInterval(intervalId);
+        fire();
+      }
+    }, 100);
+    const hardCapId = window.setTimeout(() => {
+      clearInterval(intervalId);
+      fire();
+    }, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+      clearTimeout(hardCapId);
+    };
   }, []);
 
   // Assign a palette color to each explanation in display order across the
@@ -167,7 +212,7 @@ export function ReviewLayout({ data }: Props) {
               onChange={setHighlightMode}
               truncateMode={truncateMode}
               onTruncateChange={setTruncateMode}
-              onReplayTour={() => runTour()}
+              onReplayTour={startTour}
             />
           </div>
         </header>
