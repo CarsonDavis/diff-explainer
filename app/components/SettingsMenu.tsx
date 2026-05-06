@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Settings } from "lucide-react";
+import { Settings, PlayCircle } from "lucide-react";
 import type { HighlightMode } from "@/lib/highlightSettings";
 
 interface Props {
   highlightMode: HighlightMode;
   onChange: (mode: HighlightMode) => void;
+  onReplayTour?: () => void;
 }
 
-export function SettingsMenu({ highlightMode, onChange }: Props) {
+export function SettingsMenu({ highlightMode, onChange, onReplayTour }: Props) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -37,6 +38,7 @@ export function SettingsMenu({ highlightMode, onChange }: Props) {
         onClick={() => setOpen((o) => !o)}
         aria-label="Settings"
         aria-expanded={open}
+        data-tour="settings"
         className="p-1.5 rounded-md text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-bg-hover)]"
       >
         <Settings size={16} />
@@ -62,6 +64,23 @@ export function SettingsMenu({ highlightMode, onChange }: Props) {
             checked={highlightMode === "all"}
             onSelect={() => onChange("all")}
           />
+
+          {onReplayTour && (
+            <>
+              <div className="border-t border-[var(--color-border)] my-2" />
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onReplayTour();
+                }}
+                className="w-full flex items-center gap-2 py-1.5 px-1 rounded hover:bg-[var(--color-bg-hover)] text-left"
+              >
+                <PlayCircle size={14} className="text-[var(--color-fg-muted)] shrink-0" />
+                <span className="font-medium text-[var(--color-fg)]">Replay tour</span>
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
