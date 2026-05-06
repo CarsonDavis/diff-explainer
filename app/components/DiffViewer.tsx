@@ -6,14 +6,29 @@ import { computeDiff } from "@/lib/diff";
 import { highlightToTokens, type LineToken } from "@/lib/highlighter";
 import type { DiffRow, FileReview } from "@/lib/types";
 
+export interface ActiveRange {
+  startLine: number;
+  endLine: number;
+  color: string;
+}
+
 interface DiffViewerProps {
   file: FileReview;
   /** Called for each row whose right side has a new-file line number, so the
    *  parent can position explanation cards next to that row. */
   onLineRef?: (newLine: number, el: HTMLDivElement | null) => void;
+  /** Each entry produces an accent border around the listed rows. When ranges
+   *  overlap on a row, the first matching range's color wins. */
+  activeRanges?: ActiveRange[];
 }
 
-export function DiffViewer({ file, onLineRef }: DiffViewerProps) {
+interface RowHighlight {
+  color: string;
+  isFirst: boolean;
+  isLast: boolean;
+}
+
+export function DiffViewer({ file, onLineRef, activeRanges }: DiffViewerProps) {
   const rows: DiffRow[] = useMemo(
     () => computeDiff(file.oldContent, file.newContent),
     [file.oldContent, file.newContent]
@@ -40,6 +55,37 @@ export function DiffViewer({ file, onLineRef }: DiffViewerProps) {
 
   const ready = oldTok !== null && newTok !== null;
 
+  // For each row, decide which active range (if any) covers it.
+  // A row is "in range" if its right (new-file) line is within [start, end].
+  // Pure-removal rows sandwiched between two in-range rows are also included
+  // so the highlight stays visually contiguous.
+  const rowHighlights = useMemo<(RowHighlight | null)[]>(() => {
+    const result: (RowHighlight | null)[] = new Array(rows.length).fill(null);
+    if (!activeRanges || activeRanges.length === 0) return result;
+
+    for (const range of activeRanges) {
+      const inRange: boolean[] = rows.map((r) =>
+        r.right ? r.right.line >= range.startLine && r.right.line <= range.endLine : false
+      );
+      const firstIdx = inRange.indexOf(true);
+      const lastIdx = inRange.lastIndexOf(true);
+      if (firstIdx === -1) continue;
+      for (let i = firstIdx; i <= lastIdx; i++) {
+        if (!rows[i].right) inRange[i] = true;
+      }
+      for (let i = firstIdx; i <= lastIdx; i++) {
+        if (inRange[i] && result[i] === null) {
+          result[i] = {
+            color: range.color,
+            isFirst: i === firstIdx,
+            isLast: i === lastIdx,
+          };
+        }
+      }
+    }
+    return result;
+  }, [rows, activeRanges]);
+
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
       {rows.map((row, idx) => (
@@ -50,6 +96,7 @@ export function DiffViewer({ file, onLineRef }: DiffViewerProps) {
           newTok={newTok}
           ready={ready}
           onLineRef={onLineRef}
+          highlight={rowHighlights[idx]}
         />
       ))}
     </div>
@@ -62,9 +109,17 @@ interface DiffRowViewProps {
   newTok: LineToken[][] | null;
   ready: boolean;
   onLineRef?: (newLine: number, el: HTMLDivElement | null) => void;
+  highlight: RowHighlight | null;
 }
 
-function DiffRowView({ row, oldTok, newTok, ready, onLineRef }: DiffRowViewProps) {
+function DiffRowView({
+  row,
+  oldTok,
+  newTok,
+  ready,
+  onLineRef,
+  highlight,
+}: DiffRowViewProps) {
   const leftTokens =
     ready && row.left && oldTok ? oldTok[row.left.line - 1] : undefined;
   const rightTokens =
@@ -105,6 +160,23 @@ function DiffRowView({ row, oldTok, newTok, ready, onLineRef }: DiffRowViewProps
       ? "bg-[var(--color-diff-blank-bg)]"
       : "";
 
+  const rightLineNumShadow = highlight
+    ? buildShadow({
+        color: highlight.color,
+        left: true,
+        top: highlight.isFirst,
+        bottom: highlight.isLast,
+      })
+    : null;
+  const rightCodeShadow = highlight
+    ? buildShadow({
+        color: highlight.color,
+        right: true,
+        top: highlight.isFirst,
+        bottom: highlight.isLast,
+      })
+    : null;
+
   return (
     <div
       ref={(el) => {
@@ -120,23 +192,47 @@ function DiffRowView({ row, oldTok, newTok, ready, onLineRef }: DiffRowViewProps
         value={row.right?.line}
         bg={rightBg}
         className="border-l border-[var(--color-border)]"
+        style={rightLineNumShadow ? { boxShadow: rightLineNumShadow } : undefined}
       />
-      <CodeCell html={rightHtml} bg={rightBg} />
+      <CodeCell
+        html={rightHtml}
+        bg={rightBg}
+        style={rightCodeShadow ? { boxShadow: rightCodeShadow } : undefined}
+      />
     </div>
   );
+}
+
+function buildShadow(sides: {
+  color: string;
+  left?: boolean;
+  right?: boolean;
+  top?: boolean;
+  bottom?: boolean;
+}): string | null {
+  const parts: string[] = [];
+  const c = sides.color;
+  if (sides.left) parts.push(`inset 2px 0 0 ${c}`);
+  if (sides.right) parts.push(`inset -2px 0 0 ${c}`);
+  if (sides.top) parts.push(`inset 0 2px 0 ${c}`);
+  if (sides.bottom) parts.push(`inset 0 -2px 0 ${c}`);
+  return parts.length ? parts.join(", ") : null;
 }
 
 function LineNumber({
   value,
   bg,
   className = "",
+  style,
 }: {
   value?: number;
   bg: string;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   return (
     <span
+      style={style}
       className={`shrink-0 text-right pr-2 pl-1 text-[var(--color-fg-subtle)] select-none ${bg} ${className}`}
     >
       {value ?? ""}
@@ -144,10 +240,19 @@ function LineNumber({
   );
 }
 
-function CodeCell({ html, bg }: { html: string; bg: string }) {
+function CodeCell({
+  html,
+  bg,
+  style,
+}: {
+  html: string;
+  bg: string;
+  style?: React.CSSProperties;
+}) {
   return (
     <span
-      className={`whitespace-pre overflow-x-auto pl-2 pr-4 ${bg}`}
+      style={style}
+      className={`whitespace-pre-wrap break-words pl-2 pr-4 ${bg}`}
       dangerouslySetInnerHTML={{ __html: html.length === 0 ? "&nbsp;" : html }}
     />
   );

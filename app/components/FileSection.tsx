@@ -2,20 +2,43 @@
 
 import { useLayoutEffect, useRef, useState, useCallback, useEffect } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { DiffViewer } from "./DiffViewer";
+import { DiffViewer, type ActiveRange } from "./DiffViewer";
 import { ExplanationCard } from "./ExplanationCard";
 import { FileOverview } from "./FileOverview";
 import type { FileReview } from "@/lib/types";
+import type { HighlightMode } from "@/lib/highlightSettings";
 
 interface Props {
   file: FileReview;
+  /** One color per explanation in this file, in the same order as file.explanations.
+   *  Generated globally across the review so colors rotate as you scroll. */
+  explanationColors: string[];
+  highlightMode: HighlightMode;
 }
 
 const CARD_GAP = 8;
 
-export function FileSection({ file }: Props) {
+export function FileSection({ file, explanationColors, highlightMode }: Props) {
   const [open, setOpen] = useState(true);
   const [overviewOpen, setOverviewOpen] = useState(true);
+  const [activeIdx, setActiveIdx] = useState<number | null>(null);
+
+  const activeRanges: ActiveRange[] =
+    highlightMode === "all"
+      ? file.explanations.map((exp, i) => ({
+          startLine: exp.startLine,
+          endLine: exp.endLine,
+          color: explanationColors[i],
+        }))
+      : activeIdx !== null && file.explanations[activeIdx]
+      ? [
+          {
+            startLine: file.explanations[activeIdx].startLine,
+            endLine: file.explanations[activeIdx].endLine,
+            color: explanationColors[activeIdx],
+          },
+        ]
+      : [];
 
   // Map from new-file line number → DOM element so we can anchor cards.
   const lineRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -104,24 +127,33 @@ export function FileSection({ file }: Props) {
               ref={diffContainerRef}
               className="border border-[var(--color-border)] rounded-md overflow-hidden bg-[var(--color-bg)]"
             >
-              <DiffViewer file={file} onLineRef={onLineRef} />
+              <DiffViewer file={file} onLineRef={onLineRef} activeRanges={activeRanges} />
             </div>
           </div>
 
           {/* RIGHT: anchored explanation cards */}
           <div ref={explanationsContainerRef} className="relative">
-            {file.explanations.map((exp, i) => (
-              <div
-                key={`${exp.startLine}-${i}`}
-                ref={(el) => {
-                  if (el) cardRefs.current.set(exp.startLine, el);
-                  else cardRefs.current.delete(exp.startLine);
-                }}
-                style={{ position: "absolute", left: 0, right: 0 }}
-              >
-                <ExplanationCard explanation={exp} />
-              </div>
-            ))}
+            {file.explanations.map((exp, i) => {
+              const isActive = highlightMode === "all" || activeIdx === i;
+              return (
+                <div
+                  key={`${exp.startLine}-${i}`}
+                  ref={(el) => {
+                    if (el) cardRefs.current.set(exp.startLine, el);
+                    else cardRefs.current.delete(exp.startLine);
+                  }}
+                  style={{ position: "absolute", left: 0, right: 0 }}
+                >
+                  <ExplanationCard
+                    explanation={exp}
+                    active={isActive}
+                    color={explanationColors[i]}
+                    interactive={highlightMode === "single"}
+                    onToggle={() => setActiveIdx((cur) => (cur === i ? null : i))}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

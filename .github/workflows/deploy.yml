@@ -11,8 +11,6 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  # Which example to bake into the deployed site. Path is relative to repo root.
-  EXAMPLE_REVIEW: examples/login-rate-limit.json
 
 jobs:
   deploy:
@@ -42,10 +40,10 @@ jobs:
       - name: Install Node deps
         run: npm ci
 
-      - name: Bake example review into the build
+      - name: Bake examples into the build
         run: |
-          mkdir -p public
-          cp "$EXAMPLE_REVIEW" public/review.json
+          mkdir -p public/reviews
+          cp examples/*.json public/reviews/
 
       - name: Next.js static export
         run: npm run build
