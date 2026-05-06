@@ -13,6 +13,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
+      <head>
+        {/* Tell Dark Reader (and similar browser extensions) we already have
+            a dark theme so they don't try to invert it. */}
+        <meta name="darkreader-lock" />
+        <meta name="color-scheme" content="dark" />
+      </head>
       <body>{children}</body>
     </html>
   );
