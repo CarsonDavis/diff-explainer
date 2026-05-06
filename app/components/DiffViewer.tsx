@@ -2,9 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { diffWordsWithSpace } from "diff";
+import { ChevronsUpDown } from "lucide-react";
 import { computeDiff } from "@/lib/diff";
+import { computeVisibility } from "@/lib/diffTruncate";
+import type { TruncateMode } from "@/lib/diffTruncate";
 import { highlightToTokens, type LineToken } from "@/lib/highlighter";
-import type { DiffRow, FileReview } from "@/lib/types";
+import type { ChangeExplanation, DiffRow, FileReview } from "@/lib/types";
 
 export interface ActiveRange {
   startLine: number;
@@ -20,6 +23,17 @@ interface DiffViewerProps {
   /** Each entry produces an accent border around the listed rows. When ranges
    *  overlap on a row, the first matching range's color wins. */
   activeRanges?: ActiveRange[];
+  /** "truncate" hides unchanged regions outside the context window (with a
+   *  click-to-expand stub); "full" shows every row. */
+  truncateMode?: TruncateMode;
+  /** Used only when truncateMode === "truncate": rows inside an explanation's
+   *  range are always kept visible. */
+  explanations?: ChangeExplanation[];
+  /** Set of segment-start indices the user has expanded. Owned by the parent
+   *  so the parent re-renders (and re-runs its layout effect that anchors the
+   *  explanation cards) when expansion changes. */
+  expandedSegments?: Set<number>;
+  onExpandSegment?: (segStart: number) => void;
 }
 
 interface RowHighlight {
@@ -28,10 +42,30 @@ interface RowHighlight {
   isLast: boolean;
 }
 
-export function DiffViewer({ file, onLineRef, activeRanges }: DiffViewerProps) {
+const EMPTY_SET: Set<number> = new Set();
+
+export function DiffViewer({
+  file,
+  onLineRef,
+  activeRanges,
+  truncateMode = "full",
+  explanations,
+  expandedSegments = EMPTY_SET,
+  onExpandSegment,
+}: DiffViewerProps) {
   const rows: DiffRow[] = useMemo(
     () => computeDiff(file.oldContent, file.newContent),
     [file.oldContent, file.newContent]
+  );
+
+  // Visibility plan: which rows are "must show" + which contiguous runs
+  // can be collapsed behind a stub. Recomputed only when the inputs change.
+  const plan = useMemo(
+    () =>
+      truncateMode === "truncate"
+        ? computeVisibility(rows, explanations ?? [])
+        : null,
+    [truncateMode, rows, explanations]
   );
 
   const [oldTok, setOldTok] = useState<LineToken[][] | null>(null);
@@ -86,20 +120,73 @@ export function DiffViewer({ file, onLineRef, activeRanges }: DiffViewerProps) {
     return result;
   }, [rows, activeRanges]);
 
+  // Walk rows in order, emitting either a row item or a single "collapse"
+  // item per hidden run.
+  type Item =
+    | { kind: "row"; index: number }
+    | { kind: "collapse"; segStart: number; length: number };
+  const items = useMemo<Item[]>(() => {
+    if (!plan) return rows.map((_, i) => ({ kind: "row", index: i }));
+    const out: Item[] = [];
+    const segMap = new Map(plan.segments.map((s) => [s.start, s]));
+    let i = 0;
+    while (i < rows.length) {
+      if (plan.visible[i]) {
+        out.push({ kind: "row", index: i });
+        i++;
+        continue;
+      }
+      const seg = segMap.get(i);
+      if (!seg) {
+        out.push({ kind: "row", index: i });
+        i++;
+        continue;
+      }
+      if (expandedSegments.has(seg.start)) {
+        for (let j = seg.start; j <= seg.end; j++) out.push({ kind: "row", index: j });
+      } else {
+        out.push({ kind: "collapse", segStart: seg.start, length: seg.length });
+      }
+      i = seg.end + 1;
+    }
+    return out;
+  }, [plan, rows, expandedSegments]);
+
   return (
     <div className="font-mono text-[13px] leading-[1.5]">
-      {rows.map((row, idx) => (
-        <DiffRowView
-          key={idx}
-          row={row}
-          oldTok={oldTok}
-          newTok={newTok}
-          ready={ready}
-          onLineRef={onLineRef}
-          highlight={rowHighlights[idx]}
-        />
-      ))}
+      {items.map((item) =>
+        item.kind === "row" ? (
+          <DiffRowView
+            key={`r-${item.index}`}
+            row={rows[item.index]}
+            oldTok={oldTok}
+            newTok={newTok}
+            ready={ready}
+            onLineRef={onLineRef}
+            highlight={rowHighlights[item.index]}
+          />
+        ) : (
+          <CollapseStub
+            key={`c-${item.segStart}`}
+            length={item.length}
+            onExpand={() => onExpandSegment?.(item.segStart)}
+          />
+        )
+      )}
     </div>
+  );
+}
+
+function CollapseStub({ length, onExpand }: { length: number; onExpand: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onExpand}
+      className="w-full text-left flex items-center gap-2 px-3 py-1.5 bg-[var(--color-bg-elevated)] hover:bg-[var(--color-bg-hover)] text-[12px] text-[var(--color-fg-subtle)] border-y border-[var(--color-border-subtle)]"
+    >
+      <ChevronsUpDown size={12} />
+      Show {length} hidden line{length === 1 ? "" : "s"}
+    </button>
   );
 }
 

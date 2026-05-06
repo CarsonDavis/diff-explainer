@@ -9,6 +9,11 @@ import { SettingsMenu } from "./SettingsMenu";
 import { buildTree } from "@/lib/fileTree";
 import { paletteColor } from "@/lib/highlightPalette";
 import { DEFAULT_HIGHLIGHT_MODE, type HighlightMode } from "@/lib/highlightSettings";
+import {
+  DEFAULT_TRUNCATE_MODE,
+  TRUNCATE_STORAGE_KEY,
+  type TruncateMode,
+} from "@/lib/diffTruncate";
 import { hasSeenTour, runTour } from "@/lib/tour";
 import type { ReviewData } from "@/lib/types";
 
@@ -24,6 +29,32 @@ export function ReviewLayout({ data }: Props) {
   const [highlightMode, setHighlightMode] = useState<HighlightMode>(
     DEFAULT_HIGHLIGHT_MODE
   );
+  const [truncateMode, setTruncateModeState] = useState<TruncateMode>(
+    DEFAULT_TRUNCATE_MODE
+  );
+
+  // Hydrate the truncate setting from localStorage after first render. Doing
+  // this in an effect (rather than via useState's initializer) avoids the
+  // SSR/CSR mismatch React would warn about.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(TRUNCATE_STORAGE_KEY);
+      if (stored === "truncate" || stored === "full") {
+        setTruncateModeState(stored);
+      }
+    } catch {
+      /* private mode or storage disabled — fine */
+    }
+  }, []);
+
+  const setTruncateMode = (mode: TruncateMode) => {
+    setTruncateModeState(mode);
+    try {
+      localStorage.setItem(TRUNCATE_STORAGE_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+  };
 
   // Progressive top-down rendering: hydrate the first file fully, then bump
   // the count during browser idle time so subsequent files mount one at a
@@ -134,6 +165,8 @@ export function ReviewLayout({ data }: Props) {
             <SettingsMenu
               highlightMode={highlightMode}
               onChange={setHighlightMode}
+              truncateMode={truncateMode}
+              onTruncateChange={setTruncateMode}
               onReplayTour={() => runTour()}
             />
           </div>
@@ -146,6 +179,7 @@ export function ReviewLayout({ data }: Props) {
               file={file}
               explanationColors={colorsByFile.get(file.path) ?? []}
               highlightMode={highlightMode}
+              truncateMode={truncateMode}
               deferred={i >= mountedCount}
             />
           ))}
