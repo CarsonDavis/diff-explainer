@@ -6,6 +6,10 @@ import type {
 } from "shiki";
 
 let highlighterPromise: Promise<Highlighter> | null = null;
+// Languages we've already asked shiki to load. Each entry corresponds to a
+// dynamic-imported grammar chunk, so we only pay that cost once per session.
+const loadedLangs = new Set<string>();
+const inflightLoads = new Map<string, Promise<void>>();
 
 const SUPPORTED_LANGS: BundledLanguage[] = [
   "python",
@@ -39,11 +43,28 @@ async function getHighlighter(): Promise<Highlighter> {
     highlighterPromise = import("shiki").then((shiki) =>
       shiki.createHighlighter({
         themes: [THEME],
-        langs: SUPPORTED_LANGS,
+        // Start empty; languages are pulled in on demand by ensureLang() below
+        // so we don't dynamic-import 22 grammar chunks before first paint.
+        langs: [],
       })
     );
   }
   return highlighterPromise;
+}
+
+async function ensureLang(highlighter: Highlighter, lang: string): Promise<void> {
+  if (lang === "text" || loadedLangs.has(lang)) return;
+  let inflight = inflightLoads.get(lang);
+  if (!inflight) {
+    inflight = highlighter
+      .loadLanguage(lang as BundledLanguage)
+      .then(() => {
+        loadedLangs.add(lang);
+        inflightLoads.delete(lang);
+      });
+    inflightLoads.set(lang, inflight);
+  }
+  return inflight;
 }
 
 /**
@@ -80,8 +101,10 @@ export async function highlightToTokens(
 ): Promise<LineToken[][]> {
   if (!code) return [];
   const highlighter = await getHighlighter();
+  const normalized = normalizeLang(lang);
+  await ensureLang(highlighter, normalized);
   const result = highlighter.codeToTokens(code, {
-    lang: normalizeLang(lang) as BundledLanguage,
+    lang: normalized as BundledLanguage,
     theme: THEME,
   });
   return result.tokens.map((line) =>

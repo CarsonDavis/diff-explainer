@@ -14,11 +14,20 @@ interface Props {
    *  Generated globally across the review so colors rotate as you scroll. */
   explanationColors: string[];
   highlightMode: HighlightMode;
+  /** When true, render only the file header (cheap) and skip the diff + cards.
+   *  Used for progressive top-down rendering of long reviews — files outside the
+   *  initial mount window stay deferred until idle-time scheduling reaches them. */
+  deferred?: boolean;
 }
 
 const CARD_GAP = 8;
 
-export function FileSection({ file, explanationColors, highlightMode }: Props) {
+export function FileSection({
+  file,
+  explanationColors,
+  highlightMode,
+  deferred = false,
+}: Props) {
   const [open, setOpen] = useState(true);
   const [overviewOpen, setOverviewOpen] = useState(true);
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
@@ -109,7 +118,13 @@ export function FileSection({ file, explanationColors, highlightMode }: Props) {
     >
       <FileHeader file={file} open={open} onToggle={() => setOpen((o) => !o)} />
 
-      {open && (
+      {deferred && open && (
+        <div className="px-3 py-6 text-[12px] text-[var(--color-fg-subtle)] italic">
+          Loading…
+        </div>
+      )}
+
+      {!deferred && open && (
         <div className="grid grid-cols-[1fr_400px] gap-3 p-3">
           {/* LEFT: overview + diff */}
           <div className="min-w-0 space-y-3">
@@ -125,6 +140,7 @@ export function FileSection({ file, explanationColors, highlightMode }: Props) {
 
             <div
               ref={diffContainerRef}
+              data-tour="diff"
               className="border border-[var(--color-border)] rounded-md overflow-hidden bg-[var(--color-bg)]"
             >
               <DiffViewer file={file} onLineRef={onLineRef} activeRanges={activeRanges} />

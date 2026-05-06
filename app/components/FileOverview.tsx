@@ -6,7 +6,10 @@ interface Props {
 
 export function FileOverview({ overview }: Props) {
   return (
-    <div className="border border-[var(--color-border)] rounded-md bg-[var(--color-bg-elevated)] p-4 space-y-3 text-[13px] leading-relaxed">
+    <div
+      data-tour="file-overview"
+      className="border border-[var(--color-border)] rounded-md bg-[var(--color-bg-elevated)] p-4 space-y-3 text-[13px] leading-relaxed"
+    >
       <div>
         <div className="text-[11px] uppercase tracking-wide font-semibold text-[var(--color-fg-subtle)] mb-1">
           What this file does

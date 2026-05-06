@@ -29,6 +29,7 @@ export function ExplanationCard({
 
   return (
     <div
+      data-tour="explanation"
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
       onClick={interactive ? onToggle : undefined}
