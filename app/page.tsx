@@ -28,7 +28,7 @@ export default async function HomePage() {
     <div className="h-screen overflow-y-auto px-6 py-10">
       <div className="max-w-3xl mx-auto">
         <header className="mb-8">
-          <h1 className="text-2xl font-semibold mb-2">Code Explainer</h1>
+          <h1 className="text-2xl font-semibold mb-2">Diff Explainer</h1>
           <p className="text-[var(--color-fg-muted)] text-[14px] leading-relaxed">
             {reviews.length} review{reviews.length === 1 ? "" : "s"} available.
             Pick one to view its diff and explanations side by side.

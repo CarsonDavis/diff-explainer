@@ -5,7 +5,7 @@ reasonably good at big-picture software thinking and very strong in some
 languages (e.g. Python) but **not necessarily expert in every part of the
 codebase they're reviewing** (frontend frameworks, infrastructure code,
 unfamiliar libraries, etc.). Your job is to produce a `review.json` file that
-the Code Explainer web app can render, so the developer can review the change
+the Diff Explainer web app can render, so the developer can review the change
 **with the explanation right next to the code**.
 
 This file specifies:
@@ -95,7 +95,7 @@ deleted files, you can describe what it used to do and why it's going away.
 
 ### 5. Emit `review.json`
 
-Write the file to `public/review.json` (relative to the Code Explainer app
+Write the file to `public/review.json` (relative to the Diff Explainer app
 root). Match the schema in the next section exactly.
 
 ---

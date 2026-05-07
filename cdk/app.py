@@ -11,12 +11,12 @@ generic. Required:
                             (e.g. "example.com").
     SITE_GITHUB_ORG         GitHub organization or username that owns the
                             forked repo.
-    SITE_GITHUB_REPO        Forked repo name (e.g. "code-explainer").
+    SITE_GITHUB_REPO        Forked repo name (e.g. "diff-explainer").
 
 Optional:
 
     CDK_DEFAULT_REGION      Defaults to us-east-1 (required for CloudFront).
-    SITE_SUBDOMAIN          Defaults to "code-explainer.<SITE_DOMAIN>".
+    SITE_SUBDOMAIN          Defaults to "diff-explainer.<SITE_DOMAIN>".
 """
 
 import os
@@ -24,7 +24,7 @@ import sys
 
 import aws_cdk as cdk
 
-from stacks.code_explainer_stack import CodeExplainerStack
+from stacks.diff_explainer_stack import DiffExplainerStack
 
 
 def _required(name: str) -> str:
@@ -50,13 +50,13 @@ app = cdk.App()
 ACCOUNT = _required("CDK_DEFAULT_ACCOUNT")
 REGION = _optional("CDK_DEFAULT_REGION", "us-east-1")
 DOMAIN = _required("SITE_DOMAIN")
-SUBDOMAIN = _optional("SITE_SUBDOMAIN", f"code-explainer.{DOMAIN}")
+SUBDOMAIN = _optional("SITE_SUBDOMAIN", f"diff-explainer.{DOMAIN}")
 GITHUB_ORG = _required("SITE_GITHUB_ORG")
 GITHUB_REPO = _required("SITE_GITHUB_REPO")
 
-CodeExplainerStack(
+DiffExplainerStack(
     app,
-    "CodeExplainerStack",
+    "DiffExplainerStack",
     env=cdk.Environment(account=ACCOUNT, region=REGION),
     domain=DOMAIN,
     subdomain=SUBDOMAIN,
