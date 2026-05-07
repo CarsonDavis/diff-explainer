@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { diffWordsWithSpace } from "diff";
 import { ChevronsUpDown } from "lucide-react";
 import { computeDiff } from "@/lib/diff";
@@ -152,8 +152,38 @@ export function DiffViewer({
     return out;
   }, [plan, rows, expandedSegments]);
 
+  // Side-isolated text selection. With CSS Grid, drag-selecting from one
+  // side naturally extends across the row into the other side's cells.
+  // We toggle a class on the outer div on mousedown so the not-being-
+  // selected side gets `user-select: none`, then clear on mouseup.
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const sideEl = target?.closest('[data-side]');
+      const side = sideEl?.getAttribute("data-side");
+      el.classList.remove("diff-select-left", "diff-select-right");
+      if (side === "left") el.classList.add("diff-select-right-disabled");
+      else if (side === "right") el.classList.add("diff-select-left-disabled");
+    };
+    const onUp = () => {
+      el.classList.remove(
+        "diff-select-left-disabled",
+        "diff-select-right-disabled"
+      );
+    };
+    el.addEventListener("mousedown", onDown);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      el.removeEventListener("mousedown", onDown);
+      document.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
   return (
-    <div className="font-mono text-[13px] leading-[1.5]">
+    <div ref={containerRef} className="font-mono text-[13px] leading-[1.5]">
       {items.map((item) =>
         item.kind === "row" ? (
           <DiffRowView
@@ -274,7 +304,7 @@ function DiffRowView({
       className="grid grid-cols-[3rem_minmax(0,1fr)_3rem_minmax(0,1fr)]"
     >
       <LineNumber value={row.left?.line} bg={leftBg} />
-      <CodeCell html={leftHtml} bg={leftBg} />
+      <CodeCell html={leftHtml} bg={leftBg} side="left" />
       <LineNumber
         value={row.right?.line}
         bg={rightBg}
@@ -284,6 +314,7 @@ function DiffRowView({
       <CodeCell
         html={rightHtml}
         bg={rightBg}
+        side="right"
         style={rightCodeShadow ? { boxShadow: rightCodeShadow } : undefined}
       />
     </div>
@@ -330,14 +361,17 @@ function LineNumber({
 function CodeCell({
   html,
   bg,
+  side,
   style,
 }: {
   html: string;
   bg: string;
+  side: "left" | "right";
   style?: React.CSSProperties;
 }) {
   return (
     <span
+      data-side={side}
       style={style}
       className={`whitespace-pre-wrap break-words pl-2 pr-4 ${bg}`}
       dangerouslySetInnerHTML={{ __html: html.length === 0 ? "&nbsp;" : html }}

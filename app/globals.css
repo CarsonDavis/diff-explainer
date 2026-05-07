@@ -89,3 +89,14 @@ pre.shiki, pre.shiki code {
 .diff-word-add {
   background-color: var(--color-diff-add-bg-strong);
 }
+
+/* Side-isolated text selection for the side-by-side diff. The DiffViewer
+   tags each side's code cell with data-side; on mousedown JS adds one of
+   the classes below to disable selection on the OTHER side, so dragging
+   never extends across the gutter. */
+.diff-select-left-disabled [data-side="right"] {
+  user-select: none;
+}
+.diff-select-right-disabled [data-side="left"] {
+  user-select: none;
+}
