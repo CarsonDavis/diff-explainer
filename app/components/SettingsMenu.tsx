@@ -56,7 +56,7 @@ export function SettingsMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-1 w-72 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-md shadow-lg z-10 p-3 text-[13px]"
+          className="absolute right-0 top-full mt-1 w-72 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-md shadow-lg z-30 p-3 text-[13px]"
         >
           <div className="text-[11px] uppercase tracking-wide font-semibold text-[var(--color-fg-subtle)] mb-2">
             Code highlighting
