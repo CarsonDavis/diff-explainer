@@ -137,7 +137,7 @@ export function FileSection({
   return (
     <section
       id={`file-${encodePath(file.path)}`}
-      className="border border-[var(--color-border)] rounded-md overflow-hidden bg-[var(--color-bg)]"
+      className="border border-[var(--color-border)] rounded-md bg-[var(--color-bg)]"
     >
       <FileHeader file={file} open={open} onToggle={() => setOpen((o) => !o)} />
 
@@ -236,7 +236,7 @@ function FileHeader({
     <button
       type="button"
       onClick={onToggle}
-      className="w-full flex items-center gap-2 px-3 py-2 bg-[var(--color-bg-elevated)] hover:bg-[var(--color-bg-hover)] border-b border-[var(--color-border)] text-left"
+      className="sticky top-0 z-20 w-full flex items-center gap-2 px-3 py-2 bg-[var(--color-bg-elevated)] hover:bg-[var(--color-bg-hover)] border-b border-[var(--color-border)] rounded-t-md text-left"
     >
       {open ? (
         <ChevronDown size={14} className="text-[var(--color-fg-muted)]" />
