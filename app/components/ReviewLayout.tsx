@@ -193,8 +193,8 @@ export function ReviewLayout({ data }: Props) {
       </aside>
 
       {/* MAIN */}
-      <main className="overflow-y-auto px-4 py-4">
-        <header className="mb-4 pb-4 border-b border-[var(--color-border)]">
+      <main className="overflow-y-auto px-4 pb-4">
+        <header className="pt-4 mb-4 pb-4 border-b border-[var(--color-border)]">
           <div className="flex items-start justify-between gap-3">
             <div data-tour="review-summary" className="min-w-0 flex-1">
               {data.metadata.title && (
