@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Code Explainer",
+  title: "Diff Explainer",
   description: "Understand a pull request — diff and explanation, side by side.",
 };
 

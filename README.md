@@ -1,4 +1,4 @@
-# Code Explainer
+# Diff Explainer
 
 A side-by-side viewer for code reviews where the explanation lives next to
 the diff. Built for reviewers who are strong on big-picture software
@@ -18,7 +18,7 @@ thinking but aren't fluent in every part of the codebase they're reviewing.
 └─────────┴──────────────────────────────┴──────────────────────────┘
 ```
 
-A live demo lives at https://code-explainer.codebycarson.com — but the
+A live demo lives at https://diff-explainer.codebycarson.com — but the
 expected way to use this tool is **locally**, on your own PRs. The
 deployment pieces in this repo are an example, not the main path.
 
@@ -45,8 +45,8 @@ You'll need a coding agent (Claude Code, Cursor agent mode, anything that
 reads files and writes JSON), Node 20+, and a clone of this repo.
 
 ```bash
-git clone https://github.com/CarsonDavis/code-explainer.git
-cd code-explainer
+git clone https://github.com/CarsonDavis/diff-explainer.git
+cd diff-explainer
 npm install
 ```
 
@@ -140,7 +140,7 @@ site-specific values come from environment variables set at deploy time:
 | `CDK_DEFAULT_ACCOUNT`  | yes      | Set automatically by AWS CLI/SDK or the deploy workflow     |
 | `CDK_DEFAULT_REGION`   | no       | Defaults to `us-east-1` (required for CloudFront)           |
 | `SITE_DOMAIN`          | yes      | Apex domain you own a Route 53 hosted zone for              |
-| `SITE_SUBDOMAIN`       | no       | Defaults to `code-explainer.<SITE_DOMAIN>`                  |
+| `SITE_SUBDOMAIN`       | no       | Defaults to `diff-explainer.<SITE_DOMAIN>`                  |
 | `SITE_GITHUB_ORG`      | yes      | GitHub org/user that owns your fork (auto-set in workflow)  |
 | `SITE_GITHUB_REPO`     | yes      | Forked repo name (auto-set in workflow)                     |
 
@@ -149,7 +149,7 @@ To deploy:
 1. Bootstrap CDK in your account once: `cdk bootstrap`.
 2. From the `cdk/` directory, with your AWS profile active:
    ```bash
-   SITE_DOMAIN=example.com SITE_GITHUB_ORG=you SITE_GITHUB_REPO=code-explainer \
+   SITE_DOMAIN=example.com SITE_GITHUB_ORG=you SITE_GITHUB_REPO=diff-explainer \
      uv run npx cdk deploy
    ```
    The first deploy creates the GitHub Actions role.

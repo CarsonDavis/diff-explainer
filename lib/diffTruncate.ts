@@ -5,7 +5,7 @@ export type TruncateMode = "truncate" | "full";
 export const DEFAULT_TRUNCATE_MODE: TruncateMode = "truncate";
 
 /** localStorage key for persisting the user's truncate-vs-full preference. */
-export const TRUNCATE_STORAGE_KEY = "code-explainer:truncate-mode-v1";
+export const TRUNCATE_STORAGE_KEY = "diff-explainer:truncate-mode-v1";
 
 /** How many unchanged rows of context to keep on each side of every shown
  *  region (changes + explanation ranges). Mirrors the GitHub PR default's

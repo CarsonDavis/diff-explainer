@@ -63,7 +63,7 @@ jobs:
         env:
           # Site-specific values come from repo variables so this workflow
           # stays generic. SITE_DOMAIN must be set before the first deploy.
-          # SITE_SUBDOMAIN is optional (defaults to "code-explainer.<domain>").
+          # SITE_SUBDOMAIN is optional (defaults to "diff-explainer.<domain>").
           CDK_DEFAULT_ACCOUNT: ${{ steps.account.outputs.id }}
           CDK_DEFAULT_REGION: ${{ env.AWS_REGION }}
           SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
@@ -76,8 +76,8 @@ jobs:
         id: outputs
         working-directory: cdk
         run: |
-          echo "bucket=$(jq -r '.CodeExplainerStack.SiteBucketName' outputs.json)" >> "$GITHUB_OUTPUT"
-          echo "distribution=$(jq -r '.CodeExplainerStack.DistributionId' outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "bucket=$(jq -r '.DiffExplainerStack.SiteBucketName' outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "distribution=$(jq -r '.DiffExplainerStack.DistributionId' outputs.json)" >> "$GITHUB_OUTPUT"
 
       # ── Sync + invalidate ─────────────────────────────────────
       - name: Sync out/ to S3

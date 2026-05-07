@@ -1,4 +1,4 @@
-"""CDK stack for the code-explainer static site.
+"""CDK stack for the diff-explainer static site.
 
 Resources:
 - S3 bucket (private, OAC)
@@ -29,7 +29,7 @@ from aws_cdk import (
 from constructs import Construct
 
 
-class CodeExplainerStack(Stack):
+class DiffExplainerStack(Stack):
     def __init__(
         self,
         scope: Construct,
@@ -133,7 +133,7 @@ class CodeExplainerStack(Stack):
                 },
                 assume_role_action="sts:AssumeRoleWithWebIdentity",
             ),
-            description="Role assumed by GitHub Actions for code-explainer deployments",
+            description="Role assumed by GitHub Actions for diff-explainer deployments",
         )
 
         # S3 permissions on the site bucket

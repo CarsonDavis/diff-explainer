@@ -1,7 +1,7 @@
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
 
-const SEEN_KEY = "code-explainer:tour-seen-v1";
+const SEEN_KEY = "diff-explainer:tour-seen-v1";
 
 interface Step {
   selector: string;
@@ -68,7 +68,7 @@ export function runTour(callbacks?: TourCallbacks): void {
     allowClose: true,
     overlayOpacity: 0.6,
     stagePadding: 4,
-    popoverClass: "code-explainer-tour",
+    popoverClass: "diff-explainer-tour",
     steps: steps.map((s) => ({
       element: s.selector,
       popover: { title: s.title, description: s.description, side: s.side },
