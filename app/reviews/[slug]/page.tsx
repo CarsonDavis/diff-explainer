@@ -24,5 +24,8 @@ export default async function ReviewPage({
   } catch {
     notFound();
   }
-  return <ReviewLayout data={data} />;
+  // Keying by slug forces ReviewLayout to remount when the user navigates
+  // from one review to another, so per-review state (selected file,
+  // progressive mount counter, expanded segments, etc.) doesn't leak across.
+  return <ReviewLayout key={slug} data={data} />;
 }
