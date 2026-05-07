@@ -222,6 +222,8 @@ export function ReviewLayout({ data }: Props) {
             <FileSection
               key={file.path}
               file={file}
+              fileIndex={i}
+              fileCount={data.files.length}
               explanationColors={colorsByFile.get(file.path) ?? []}
               highlightMode={highlightMode}
               truncateMode={truncateMode}

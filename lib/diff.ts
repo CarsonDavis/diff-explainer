@@ -1,6 +1,23 @@
 import { diffLines } from "diff";
 import type { DiffRow } from "./types";
 
+/** Count added vs removed lines for the file header's "+A −R" stat. A
+ *  modified line shows up in `diffLines` as a removed chunk followed by an
+ *  added chunk, so this naturally counts modifications as +1 add and +1
+ *  remove — matching how GitHub displays the same number. */
+export function computeDiffStats(
+  oldContent: string,
+  newContent: string
+): { adds: number; removes: number } {
+  let adds = 0;
+  let removes = 0;
+  for (const part of diffLines(oldContent, newContent)) {
+    if (part.added) adds += part.count ?? 0;
+    else if (part.removed) removes += part.count ?? 0;
+  }
+  return { adds, removes };
+}
+
 type Part = { kind: "context" | "removed" | "added"; lines: string[] };
 
 /**

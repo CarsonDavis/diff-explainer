@@ -162,6 +162,17 @@ interface ChangeExplanation {
   explanation is about).
 - For deleted files, set `appliesTo: "old"` and use line numbers from the
   old file.
+- **Order `files[]` for reading flow, not alphabetically.** The viewer
+  renders files top-to-bottom in the order you emit them. Pick the order
+  someone reading the PR for the first time would naturally follow to
+  understand the change:
+  - lead with whatever frames the change — a doc/ADR if there is one,
+    otherwise the file that introduces the central new behavior or contains
+    the primary edit;
+  - follow with files that depend on or extend that, working outward;
+  - place tests last (they confirm behavior already shown).
+  Don't sort by path. Don't put trivial/glue files (imports, type
+  re-exports) before the meaty ones.
 - Emit valid JSON. No comments, no trailing commas.
 
 ---

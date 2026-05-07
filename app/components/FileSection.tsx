@@ -5,12 +5,17 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { DiffViewer, type ActiveRange } from "./DiffViewer";
 import { ExplanationCard } from "./ExplanationCard";
 import { FileOverview } from "./FileOverview";
+import { computeDiffStats } from "@/lib/diff";
 import type { FileReview } from "@/lib/types";
 import type { HighlightMode } from "@/lib/highlightSettings";
 import type { TruncateMode } from "@/lib/diffTruncate";
 
 interface Props {
   file: FileReview;
+  /** Zero-based position in the review's file list. */
+  fileIndex: number;
+  /** Total number of files in the review. */
+  fileCount: number;
   /** One color per explanation in this file, in the same order as file.explanations.
    *  Generated globally across the review so colors rotate as you scroll. */
   explanationColors: string[];
@@ -22,10 +27,17 @@ interface Props {
   deferred?: boolean;
 }
 
+interface DiffStats {
+  adds: number;
+  removes: number;
+}
+
 const CARD_GAP = 8;
 
 export function FileSection({
   file,
+  fileIndex,
+  fileCount,
   explanationColors,
   highlightMode,
   truncateMode,
@@ -37,6 +49,44 @@ export function FileSection({
   const [expandedSegments, setExpandedSegments] = useState<Set<number>>(
     () => new Set()
   );
+  const [stats, setStats] = useState<DiffStats | null>(null);
+
+  // When the user collapses this file, pin its header to the top of the
+  // viewport. Without this the scroll position stays at the same absolute
+  // px, so the file shrinks under the cursor and the page jumps to whatever
+  // file was previously several thousand pixels below.
+  const wasOpenRef = useRef(open);
+  useLayoutEffect(() => {
+    if (wasOpenRef.current && !open) {
+      document
+        .getElementById(`file-${encodePath(file.path)}`)
+        ?.scrollIntoView({ block: "start" });
+    }
+    wasOpenRef.current = open;
+  }, [open, file.path]);
+
+  // Compute add/remove stats lazily so even deferred files eventually show
+  // their counts without paying the cost on first render.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+    const ric: (cb: () => void) => number =
+      "requestIdleCallback" in window
+        ? (cb) => window.requestIdleCallback!(cb)
+        : (cb) => window.setTimeout(cb, 0);
+    const cic: (id: number) => void =
+      "cancelIdleCallback" in window
+        ? (id) => window.cancelIdleCallback!(id)
+        : (id) => window.clearTimeout(id);
+    const id = ric(() => {
+      if (cancelled) return;
+      setStats(computeDiffStats(file.oldContent, file.newContent));
+    });
+    return () => {
+      cancelled = true;
+      cic(id);
+    };
+  }, [file.oldContent, file.newContent]);
 
   // Reset expansions whenever the truncate mode flips so toggling between
   // modes always starts from a clean state.
@@ -139,7 +189,14 @@ export function FileSection({
       id={`file-${encodePath(file.path)}`}
       className="border border-[var(--color-border)] rounded-md bg-[var(--color-bg)]"
     >
-      <FileHeader file={file} open={open} onToggle={() => setOpen((o) => !o)} />
+      <FileHeader
+        file={file}
+        open={open}
+        onToggle={() => setOpen((o) => !o)}
+        fileIndex={fileIndex}
+        fileCount={fileCount}
+        stats={stats}
+      />
 
       {deferred && open && (
         <div className="px-3 py-6 text-[12px] text-[var(--color-fg-subtle)] italic">
@@ -218,10 +275,16 @@ function FileHeader({
   file,
   open,
   onToggle,
+  fileIndex,
+  fileCount,
+  stats,
 }: {
   file: FileReview;
   open: boolean;
   onToggle: () => void;
+  fileIndex: number;
+  fileCount: number;
+  stats: DiffStats | null;
 }) {
   const statusColor =
     file.changeType === "added"
@@ -249,7 +312,7 @@ function FileHeader({
       >
         {file.changeType.toUpperCase()}
       </span>
-      <span className="font-mono text-sm">
+      <span className="font-mono text-sm min-w-0 truncate">
         {file.oldPath && file.oldPath !== file.path && (
           <>
             <span className="text-[var(--color-fg-subtle)] line-through">{file.oldPath}</span>{" "}
@@ -258,6 +321,17 @@ function FileHeader({
         )}
         {file.path}
       </span>
+      <div className="ml-auto flex items-center gap-3 shrink-0 pl-2">
+        {stats && (stats.adds > 0 || stats.removes > 0) && (
+          <span className="font-mono text-xs flex items-center gap-1.5">
+            <span style={{ color: "var(--color-status-added)" }}>+{stats.adds}</span>
+            <span style={{ color: "var(--color-status-deleted)" }}>−{stats.removes}</span>
+          </span>
+        )}
+        <span className="text-xs text-[var(--color-fg-subtle)] tabular-nums">
+          {fileIndex + 1} / {fileCount}
+        </span>
+      </div>
     </button>
   );
 }
