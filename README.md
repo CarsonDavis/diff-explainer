@@ -4,20 +4,6 @@ A side-by-side viewer for code reviews where the explanation lives next to
 the diff. Built for reviewers who are strong on big-picture software
 thinking but aren't fluent in every part of the codebase they're reviewing.
 
-```
-┌─────────┬──────────────────────────────┬──────────────────────────┐
-│ TREE    │ Diff (full file, highlighted)│ Explanation cards         │
-│         │                              │ anchored to changes       │
-│ ▼ src   │  10  def authenticate():     │ ┌──────────────────────┐  │
-│   auth.py│ 11- old_code()              │ │ L11–13               │  │
-│ ▶ tests │ 11+ if not limiter.allow():  │ │ Add rate-limit gate  │  │
-│         │ 12+   return 429             │ │                      │  │
-│         │                              │ │ Why: prevents brute  │  │
-│         │                              │ │ force credential...  │  │
-│         │                              │ └──────────────────────┘  │
-└─────────┴──────────────────────────────┴──────────────────────────┘
-```
-
 A live demo lives at https://diff-explainer.codebycarson.com — but the
 expected way to use this tool is **locally**, on your own PRs. The
 deployment pieces in this repo are an example, not the main path.
